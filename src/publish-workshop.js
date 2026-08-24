@@ -106,7 +106,7 @@ Full source on GitHub: [url=https://github.com/IronBamBam1990/sandtogether]githu
   const details = {
     title: TITLE,
     description: DESCRIPTION,
-    changeNote: 'v0.9.145-beta - World sync no longer treats a lost packet as delivered. The client now acks a contiguous watermark (batch 52 without 51 stays at 50) and NACKs the hole so the host resends those chunks from the current state — the Swiss-cheese world over Steam relay. Save transfer keeps its parts for ~20 s after world-end and resends missing indices instead of restarting the whole ~700 KB file. Steam P2P uses the same binary world frames as WebSocket (no base64) and caps live batches at ~48 KB; sendP2PPacket returning false now throttles the host. A slow peer still governs the ack watermark but no longer cuts everyone else\'s send budget to 25 %. Direct/UPnP and LAN get the same protocol fixes.',
+    changeNote: 'v0.9.146-beta - Steam invite now tries a direct connection automatically. Host (Steam) still uses the Friends lobby and overlay invite, but also opens TCP 27777 and sends the LAN/public address over P2P after hello. The joining player tries LAN first, then the public IP, with a session token so the open port is not a public lobby. If Direct works, the world stream uses WebSocket (full speed); Steam remains for invites and as fallback when UPnP/CGNAT fail. Also in this drop: contiguous world-ack watermark (no more Swiss-cheese holes on lost packets), resumable save transfer, Steam binary frames, 48 KB Steam batch cap.',
     previewPath: PREVIEW,
     contentPath: CONTENT,
     visibility: vis,
