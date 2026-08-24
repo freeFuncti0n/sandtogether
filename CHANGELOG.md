@@ -1,3 +1,13 @@
+## 0.9.145-beta
+
+**World holes over the internet (Steam relay and dropped packets) — fixed at the source.** The client used to acknowledge the *latest* world batch it had seen, so a lost packet in the middle counted as delivered. The host then never resent those rows, which is why a Steam session could look like Swiss cheese while LAN looked fine. The ack is now a contiguous watermark: batch 52 without 51 keeps the ack at 50, the hole is NACKed immediately, and those chunks are resent from the *current* state. The same path covers Direct/UPnP and LAN when a batch is dropped during menu or world load.
+
+**Save transfer no longer restarts from zero.** A `world-need` for an old transfer id used to throw the whole ~700 KB save away and start over. The host now keeps the chunks for ~20 s after `world-end` and only resends the missing indices.
+
+**Steam P2P sends the same binary world frames as WebSocket** (no base64 tax) and caps live batches at ~48 KB, matching the save-chunk limit the relay can actually carry. `sendP2PPacket` returning false now throttles the host instead of filling a silent buffer.
+
+**A slow peer no longer starves everyone else's bandwidth.** Congestion still waits for the slowest ack (so that player does not get holes), but the send budget no longer drops to 25 % just because one VPN client's apply queue is long.
+
 ## 0.9.144-beta
 
 **The Steam relay now announces itself.** A session invited through Steam runs over Valve's relay, which
