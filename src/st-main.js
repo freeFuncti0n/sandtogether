@@ -3,7 +3,7 @@
 // Author / Autor: KAMIL PADULA
 // Networking core (Electron main process).
 // Transports: Steam P2P (internet, zero-config via lobby + overlay invites)
-//             and a minimal dependency-free WebSocket (LAN / local testing).
+//             WebSocket (LAN / Direct+UPnP), and hybrid: Steam invite then Direct WS.
 // All network state lives here because the renderer reloads between scenes.
 // ============================================================================
 
@@ -42,6 +42,10 @@ const S = {
   p2pPoll: null,
   myNick: 'Player',
   myId: 'local',
+  sessionTok: null,     // 0.9.146: hybrid Direct-WS gate (16-byte hex)
+  directInfo: null,     // { lan, ip, port, tok?, upnp? } — never put in Rich Presence
+  _wsUpgraded: false,
+  _upgradeBusy: false,
 };
 
 function sendRenderer(channel, payload) {
@@ -103,13 +107,54 @@ function wsFrameParser(sock, onText, onBinary) {
   };
 }
 
-function startWsServer(port) {
-  stopNetworking('restart');
-  S.role = 'host'; S.transport = 'ws';
+function wsNeedAuth() { return !!S.sessionTok; }
+
+function attachAuthedWs(pending, sock, sidStr) {
+  const sid = sidStr ? String(sidStr) : '';
+  const steamId = sid ? ('steam:' + sid) : null;
+  const existing = steamId && S.peers.get(steamId);
+  if (existing) {
+    existing.kind = 'ws';
+    existing.sock = sock;
+    sock._stPeerId = existing.id;
+    emitEvent('peer-upgraded', { id: existing.id, transport: 'ws' });
+    log('HYBRID: peer', existing.id, 'przeszedl na Direct WS');
+    // no second hello — Steam already exchanged it; another hello would re-queue the full world
+    return existing;
+  }
+  const peer = { id: pending.id, kind: 'ws', sock, nick: '?', steamId64: sid || undefined };
+  S.peers.set(peer.id, peer);
+  sock._stPeerId = peer.id;
+    emitEvent('peer-connected', { id: peer.id, peerKind: 'ws' });
+  sendToPeer(peer, { t: 'hello', nick: S.myNick, ver: PROTO_VER });
+  return peer;
+}
+
+function onWsSockClose(sock, fallbackPeerId) {
+  const id = sock._stPeerId || fallbackPeerId;
+  const p = id && S.peers.get(id);
+  if (!p || p.sock !== sock) return;
+  p.sock = null;
+  if (p.steamId64 && S.role === 'host' && S.lobby) {
+    p.kind = 'steam';
+    emitEvent('peer-upgraded', { id: p.id, transport: 'steam' });
+    log('HYBRID: WS padl u', id, '— wracam na Steam P2P');
+    return;
+  }
+  if (S.peers.delete(id)) emitEvent('peer-disconnected', { id });
+}
+
+function startWsServer(port, opts) {
+  const keepSteam = !!(opts && opts.keepSteam);
+  if (!keepSteam) stopNetworking('restart');
+  else if (S.wsServer) { try { S.wsServer.close(); } catch (e) {} S.wsServer = null; }
+  if (!keepSteam) { S.role = 'host'; S.transport = 'ws'; }
+  const p = port || 27777;
   S.wsServer = net.createServer((sock) => {
     let upgraded = false;
     let headerBuf = Buffer.alloc(0);
     const peerId = 'ws:' + sock.remoteAddress + ':' + sock.remotePort;
+    const pending = { id: peerId, kind: 'ws', sock, nick: '?', pendingAuth: false };
     sock.on('data', (chunk) => {
       if (upgraded) return;
       headerBuf = Buffer.concat([headerBuf, chunk]);
@@ -121,22 +166,62 @@ function startWsServer(port) {
       const accept = crypto.createHash('sha1').update(m[1].trim() + WS_GUID).digest('base64');
       sock.write('HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ' + accept + '\r\n\r\n');
       upgraded = true;
-      const peer = { id: peerId, kind: 'ws', sock, nick: '?' };
-      S.peers.set(peerId, peer);
-      const feed = wsFrameParser(sock, (text) => handleIncoming(peerId, text), (bin) => handleIncomingBin(peerId, bin));
-      const rest = headerBuf.subarray(idx + 4);
+      const needAuth = wsNeedAuth();
+      pending.pendingAuth = needAuth;
+      const feed = wsFrameParser(sock, (text) => {
+        if (pending.pendingAuth) {
+          let obj;
+          try { obj = JSON.parse(text); } catch (e) { try { sock.end(); } catch (e2) {} return; }
+          if (obj.t !== 'auth' || !S.sessionTok || obj.tok !== S.sessionTok) {
+            log('HYBRID: WS auth odrzucony od', peerId);
+            try { sock.end(); } catch (e) {}
+            return;
+          }
+          const sid = obj.sid != null ? String(obj.sid) : '';
+          if (!sid || !S.peers.get('steam:' + sid)) {
+            log('HYBRID: WS auth bez znanego steam peer — odrzucam (anti-ghost)', sid || '?');
+            try { sock.end(); } catch (e) {}
+            return;
+          }
+          pending.pendingAuth = false;
+          if (pending.authTimer) { clearTimeout(pending.authTimer); pending.authTimer = null; }
+          attachAuthedWs(pending, sock, sid);
+          return;
+        }
+        handleIncoming(sock._stPeerId || pending.id, text);
+      }, (bin) => {
+        if (pending.pendingAuth) return;
+        handleIncomingBin(sock._stPeerId || pending.id, bin);
+      });
       sock.on('data', feed);
+      const rest = headerBuf.subarray(idx + 4);
       if (rest.length) feed(rest);
-      emitEvent('peer-connected', { id: peerId });
-      // fix (DwoaC): serwer WS też musi się PRZYWITAĆ — bez hello hosta klient nigdy nie odpowiada
-      // mver i host po 5s widział fałszywy alarm "OLD mod" (Steam robi to w refreshLobbyMembers)
-      sendToPeer(peer, { t: 'hello', nick: S.myNick, ver: PROTO_VER });
+      if (needAuth) {
+        pending.authTimer = setTimeout(() => { try { sock.end(); } catch (e) {} }, 3000);
+      } else {
+        const peer = { id: peerId, kind: 'ws', sock, nick: '?' };
+        S.peers.set(peerId, peer);
+        sock._stPeerId = peerId;
+        emitEvent('peer-connected', { id: peerId, peerKind: 'ws' });
+        sendToPeer(peer, { t: 'hello', nick: S.myNick, ver: PROTO_VER });
+      }
     });
-    sock.on('close', () => { if (S.peers.delete(peerId)) emitEvent('peer-disconnected', { id: peerId }); });
+    sock.on('close', () => {
+      if (pending.authTimer) { clearTimeout(pending.authTimer); pending.authTimer = null; }
+      onWsSockClose(sock, peerId);
+    });
     sock.on('error', () => {});
   });
-  S.wsServer.on('error', (e) => emitEvent('error', { where: 'ws-server', message: e.message }));
-  S.wsServer.listen(port, () => emitEvent('hosting', { transport: 'ws', port }));
+  return new Promise((resolve, reject) => {
+    const onErr = (e) => { emitEvent('error', { where: 'ws-server', message: e.message }); reject(e); };
+    S.wsServer.once('error', onErr);
+    S.wsServer.listen(p, () => {
+      S.wsServer.removeListener('error', onErr);
+      S.wsServer.on('error', (e) => emitEvent('error', { where: 'ws-server', message: e.message }));
+      if (!keepSteam) emitEvent('hosting', { transport: 'ws', port: p });
+      resolve();
+    });
+  });
 }
 
 function joinWs(host, port, _retry) {
@@ -158,9 +243,10 @@ function joinWs(host, port, _retry) {
     if (!/ 101 /.test(headerBuf.toString('utf8', 0, idx))) { emitEvent('error', { where: 'ws-join', message: 'handshake failed' }); sock.end(); return; }
     upgraded = true;
     S.peers.set('host', { id: 'host', kind: 'ws', sock, nick: 'Host' });
+    sock._stPeerId = 'host';
     const feed = wsFrameParser(sock, (text) => handleIncoming('host', text), (bin) => handleIncomingBin('host', bin));
-    const rest = headerBuf.subarray(idx + 4);
     sock.on('data', feed);
+    const rest = headerBuf.subarray(idx + 4);
     if (rest.length) feed(rest);
     emitEvent('joined', { transport: 'ws', host, port });
     netSend({ t: 'hello', nick: S.myNick, ver: PROTO_VER });
@@ -168,14 +254,11 @@ function joinWs(host, port, _retry) {
   sock.on('close', () => {
     S.peers.delete('host');
     emitEvent('peer-disconnected', { id: 'host' });
-    // AUTO-RECONNECT (LAN): zerwane łącze wskrzeszamy co 3s. Licznik prób jedzie przez parametr _retry
-    // (przetrwa kolejne sockety!). Udany handshake = stabilne łącze → przyszłe zerwanie znów ma 5 prób.
-    // Stop usera / inne połączenie w międzyczasie przerywa (role/transport/peers check).
-    if (S.role === 'client' && S.transport === 'ws' && S.wsClient === sock) {
-      const next = upgraded ? 1 : retryCount + 1; // po stabilnym łączu licz od 1; po nieudanej próbie +1
+    if (S.role === 'client' && S.transport === 'ws' && S.wsClient === sock && !S.lobby) {
+      const next = upgraded ? 1 : retryCount + 1;
       if (next > 5) { emitEvent('error', { where: 'ws-join', message: 'reconnect failed after 5 tries' }); return; }
       setTimeout(() => {
-        if (S.role !== 'client' || S.transport !== 'ws' || S.peers.size > 0) return;
+        if (S.role !== 'client' || S.transport !== 'ws' || S.peers.size > 0 || S.lobby) return;
         log('WS reconnect próba', next, '/5 →', host + ':' + port);
         emitEvent('reconnecting', { transport: 'ws', attempt: next });
         try { joinWs(host, port, next); } catch (e) {}
@@ -183,6 +266,115 @@ function joinWs(host, port, _retry) {
     }
   });
   sock.on('error', (e) => emitEvent('error', { where: 'ws-join', message: e.message }));
+}
+
+// 0.9.146: Direct WS obok istniejacego Steam P2P — NIE ruszamy lobby.
+function joinWsKeepSteam(host, port, tok, cb) {
+  const key = crypto.randomBytes(16).toString('base64');
+  let settled = false;
+  const sock = net.connect({ host, port }, () => {
+    sock.write('GET / HTTP/1.1\r\nHost: ' + host + ':' + port + '\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: ' + key + '\r\nSec-WebSocket-Version: 13\r\n\r\n');
+  });
+  if (S.wsClient && S.wsClient !== sock) { try { S.wsClient.destroy(); } catch (e) {} }
+  S.wsClient = sock;
+  let headerBuf = Buffer.alloc(0);
+  let httpDone = false;
+  const fail = (why) => {
+    if (settled) return;
+    settled = true;
+    try { sock.destroy(); } catch (e) {}
+    if (S.wsClient === sock) S.wsClient = null;
+    log('HYBRID: WS try fail', host + ':' + port, why || '');
+    if (cb) cb(false);
+  };
+  sock.setTimeout(2500, () => fail('timeout'));
+  sock.on('error', (e) => fail(e.message));
+  sock.on('data', (chunk) => {
+    if (httpDone) return;
+    headerBuf = Buffer.concat([headerBuf, chunk]);
+    const idx = headerBuf.indexOf('\r\n\r\n');
+    if (idx === -1) return;
+    if (!/ 101 /.test(headerBuf.toString('utf8', 0, idx))) { fail('handshake failed'); return; }
+    httpDone = true;
+    sock.setTimeout(0);
+    const steamHost = [...S.peers.values()].find((p) => p.kind === 'steam' || p.steamId64) || S.peers.get('host');
+    const peerId = steamHost ? steamHost.id : 'host';
+    if (steamHost) { steamHost.kind = 'ws'; steamHost.sock = sock; }
+    else S.peers.set('host', { id: 'host', kind: 'ws', sock, nick: 'Host' });
+    sock._stPeerId = peerId;
+    const feed = wsFrameParser(sock, (text) => handleIncoming(peerId, text), (bin) => handleIncomingBin(peerId, bin));
+    sock.on('data', feed);
+    const rest = headerBuf.subarray(idx + 4);
+    if (rest.length) feed(rest);
+    try { sock.write(wsEncodeFrame(JSON.stringify({ t: 'auth', tok: tok, sid: S.myId }), true)); } catch (e) { fail(e.message); return; }
+    S.transport = 'ws';
+    S._wsUpgraded = true;
+    S._wsRetry = 0;
+    settled = true;
+    log('HYBRID: Direct WS OK', host + ':' + port);
+    emitEvent('upgraded', { transport: 'ws', host, port });
+    if (cb) cb(true);
+  });
+  sock.on('close', () => {
+    if (!settled) { fail('closed'); return; }
+    if (S.wsClient !== sock) return;
+    S.wsClient = null;
+    if (S.role !== 'client' || !S.lobby) return;
+    const p = S.peers.get(sock._stPeerId) || [...S.peers.values()].find((x) => x.sock == null && x.steamId64);
+    if (p) { p.kind = 'steam'; p.sock = null; }
+    S.transport = 'steam';
+    S._wsUpgraded = false;
+    emitEvent('upgraded', { transport: 'steam', fallback: true });
+    log('HYBRID: Direct WS zerwany — wracam na Steam P2P, retry za 3 s');
+    S._wsRetry = (S._wsRetry || 0) + 1;
+    if (S._wsRetry > 5) { log('HYBRID: Direct WS retry limit — zostaje Steam P2P'); return; }
+    setTimeout(() => {
+      if (S.role !== 'client' || S._wsUpgraded || !S.directInfo || !S.directInfo.tok) return;
+      tryUpgradeWs(S.directInfo);
+    }, 3000);
+  });
+}
+
+function hybridWsCandidates(info) {
+  const cands = [];
+  if (!info) return cands;
+  if (info.lan) cands.push(info.lan);
+  if (info.ip && info.ip !== info.lan) cands.push(info.ip);
+  return cands;
+}
+
+function tryUpgradeWs(info) {
+  if (!info || S._upgradeBusy || S._wsUpgraded) return;
+  const cands = hybridWsCandidates(info);
+  if (!cands.length) {
+    log('HYBRID: brak adresu Direct — zostaje Steam P2P');
+    emitEvent('upgrade-failed', {});
+    return;
+  }
+  S._upgradeBusy = true;
+  S.directInfo = { lan: info.lan || null, ip: info.ip || null, port: info.port || 27777, tok: info.tok };
+  const port = S.directInfo.port;
+  emitEvent('upgrading', {});
+  const tryNext = (i) => {
+    if (S.role !== 'client' || S._wsUpgraded) { S._upgradeBusy = false; return; }
+    if (i >= cands.length) {
+      S._upgradeBusy = false;
+      log('HYBRID: Direct WS nieosiagalny — zostaje Steam P2P');
+      emitEvent('upgrade-failed', {});
+      return;
+    }
+    joinWsKeepSteam(cands[i], port, info.tok, (ok) => {
+      if (ok) S._upgradeBusy = false;
+      else tryNext(i + 1);
+    });
+  };
+  tryNext(0);
+}
+
+function sendUpgrade(peer) {
+  if (S.role !== 'host' || !S.sessionTok || !S.directInfo || !peer) return;
+  if (peer.kind === 'ws') return;
+  sendToPeer(peer, { t: 'upgrade', lan: S.directInfo.lan || null, ip: S.directInfo.ip || null, port: S.directInfo.port, tok: S.sessionTok });
 }
 
 // ---------------------------------------------------------------------------
@@ -265,12 +457,20 @@ function refreshLobbyMembers() {
       current.add('steam:' + sid);
       if (!S.peers.has('steam:' + sid)) {
         S.peers.set('steam:' + sid, { id: 'steam:' + sid, kind: 'steam', steamId64: sid, nick: '?' });
-        emitEvent('peer-connected', { id: 'steam:' + sid });
-        // przywitaj się, żeby ustanowić sesję P2P
+        emitEvent('peer-connected', { id: 'steam:' + sid, peerKind: 'steam' });
         sendToPeer(S.peers.get('steam:' + sid), { t: 'hello', nick: S.myNick, ver: PROTO_VER });
+        sendUpgrade(S.peers.get('steam:' + sid));
       }
     }
-    for (const [id, p] of S.peers) if (p.kind === 'steam' && !current.has(id)) { S.peers.delete(id); emitEvent('peer-disconnected', { id }); }
+    for (const [id, p] of S.peers) {
+      if (p.kind === 'ws' && !p.steamId64) continue;
+      const sidKey = p.steamId64 ? ('steam:' + p.steamId64) : id;
+      if (!current.has(sidKey) && !current.has(id)) {
+        if (p.sock) try { p.sock.end(); } catch (e) {}
+        S.peers.delete(id);
+        emitEvent('peer-disconnected', { id });
+      }
+    }
   } catch (e) { log('refreshLobbyMembers error:', e.message); }
 }
 
@@ -296,27 +496,40 @@ async function hostSteam() {
   if (!S.steam) throw new Error('Steam client niedostępny');
   stopNetworking('restart');
   S.role = 'host'; S.transport = 'steam';
+  S.sessionTok = crypto.randomBytes(16).toString('hex');
   const { LobbyType } = S.steam.matchmaking;
   S.lobby = await S.steam.matchmaking.createLobby(LobbyType.FriendsOnly, 4);
   ensureP2pPoll();
   try { S.lobby.setJoinable(true); } catch (e) { log('setJoinable error:', e.message); }
-  // Rich presence "connect" => Steam pokazuje "Dołącz do gry" w liście znajomych
-  // i przekazuje ten string jako launch param dołączającemu.
   try { S.steam.localplayer.setRichPresence('connect', '+connect_lobby ' + String(S.lobby.id)); } catch (e) { log('setRichPresence error:', e.message); }
-  emitEvent('hosting', { transport: 'steam', lobbyId: String(S.lobby.id) });
-  return { lobbyId: String(S.lobby.id) };
+  let upnp = false, port = 27777;
+  try {
+    await startWsServer(port, { keepSteam: true });
+    const r = await upnpOpenPort(port);
+    upnp = !!r.upnp;
+    S.directInfo = { lan: localIPv4(), ip: r.publicIp || null, port: port, upnp: upnp };
+    log('HYBRID: WS :' + port + ' lan=' + (S.directInfo.lan || '?') + ' public=' + (r.publicIp ? '(ukryty)' : 'brak') + ' upnp=' + upnp + (r.error ? ' err=' + r.error : ''));
+  } catch (e) {
+    S.directInfo = { lan: localIPv4(), ip: null, port: port, upnp: false };
+    log('HYBRID: WS nie wstal — zostaje czysty Steam P2P:', e.message);
+  }
+  emitEvent('hosting', { transport: 'steam', lobbyId: String(S.lobby.id), hybrid: true, upnp: upnp, port: port });
+  return { lobbyId: String(S.lobby.id), hybrid: true, upnp: upnp, port: port };
 }
 
 // AUTO-REJOIN Steam (odpowiednik reconnectu WS): po utracie P2P/hosta próbujemy wrócić do
 // ostatniego lobby co 3s, max 5 razy. Nowe świadome połączenie/Stop zeruje licznik.
 function steamRejoin(attempt) {
-  if (S.role !== 'client' || S.transport !== 'steam' || !S.lastLobbyId) return;
-  if (S._rejoinPending) return; // jedna pętla naraz
+  if (S.role !== 'client' || !S.lastLobbyId) return;
+  if (S._wsUpgraded && S.wsClient) return; // dane ida Direct WS — P2P fail nie zrywa sesji
+  if (S.transport !== 'steam' && S.transport !== 'ws') return;
+  if (S._rejoinPending) return;
   if (attempt > 5) { emitEvent('error', { where: 'steam-rejoin', message: 'rejoin failed after 5 tries' }); return; }
   S._rejoinPending = true;
   setTimeout(async () => {
     S._rejoinPending = false;
-    if (S.role !== 'client' || S.transport !== 'steam') return;
+    if (S.role !== 'client') return;
+    if (S._wsUpgraded && S.wsClient) return;
     log('Steam rejoin próba', attempt, '/5 → lobby', S.lastLobbyId);
     emitEvent('reconnecting', { transport: 'steam', attempt });
     try { await joinSteamLobby(S.lastLobbyId); } catch (e) { steamRejoin(attempt + 1); }
@@ -328,6 +541,8 @@ async function joinSteamLobby(lobbyIdStr) {
   stopNetworking('restart');
   S.role = 'client'; S.transport = 'steam';
   S.lastLobbyId = lobbyIdStr;
+  S._wsUpgraded = false;
+  S._upgradeBusy = false;
   S.lobby = await S.steam.matchmaking.joinLobby(BigInt(lobbyIdStr));
   const owner = S.lobby.getOwner();
   const sid = String(owner.steamId64 !== undefined ? owner.steamId64 : owner);
@@ -344,19 +559,23 @@ async function joinSteamLobby(lobbyIdStr) {
 function handleIncoming(peerId, text, steamSid) {
   let obj;
   try { obj = JSON.parse(text); } catch (e) { return; }
-  // auto-rejestracja peera steam, który jeszcze nie jest w mapie (np. hello przed LobbyChatUpdate)
   if (steamSid && !S.peers.has(peerId)) {
     S.peers.set(peerId, { id: peerId, kind: 'steam', steamId64: steamSid, nick: '?' });
-    emitEvent('peer-connected', { id: peerId });
+    emitEvent('peer-connected', { id: peerId, peerKind: 'steam' });
   }
   const peer = S.peers.get(peerId);
+  if (obj.t === 'upgrade') {
+    if (S.role === 'client' && (S.transport === 'steam' || S.lobby)) tryUpgradeWs(obj);
+    return;
+  }
+  if (obj.t === 'auth') return;
   if (peer && obj.t === 'hello') {
     peer.nick = obj.nick || '?';
     emitEvent('peer-hello', { id: peerId, nick: peer.nick });
     if (obj.ver != null && obj.ver !== PROTO_VER) emitEvent('version-mismatch', { id: peerId, theirs: obj.ver, ours: PROTO_VER });
+    if (S.role === 'host' && peer.kind === 'steam') sendUpgrade(peer);
   }
   emitMsg(peerId, obj);
-  // host relays player positions/hellos to the other clients (3+ player support)
   if (S.role === 'host' && (obj.t === 'pos' || obj.t === 'hello' || obj.t === 'chat' || obj.t === 'myproj' || obj.t === 'snd') && S.peers.size > 1) {
     const relay = { t: 'relay', from: peerId, msg: obj };
     for (const p of S.peers.values()) if (p.id !== peerId) sendToPeer(p, relay);
@@ -384,13 +603,12 @@ function looksLikeBinFrame(buf) {
 function sendToPeer(peer, obj) {
   const isBin = Buffer.isBuffer(obj) || obj instanceof Uint8Array;
   try {
-    if (peer.kind === 'ws') peer.sock.write(wsEncodeFrame(isBin ? obj : JSON.stringify(obj), S.role === 'client'));
-    else if (peer.kind === 'steam') {
-      // ping, pong and wcack MUST bypass the reliable channel. Steam's reliable channel is ORDERED, so
-      // neither can overtake a backlog of world packets: the HUD would report send queue depth instead of
-      // RTT, and the mirror ack would feed the congestion controller state from tens of seconds ago,
-      // which defeats the whole point of measuring. Losing one is harmless, ping goes out every 1 s and
-      // wcack 10x per second, and both carry absolute state rather than a delta.
+    if (peer.kind === 'ws' && peer.sock) {
+      peer.sock.write(wsEncodeFrame(isBin ? obj : JSON.stringify(obj), S.role === 'client'));
+      return;
+    }
+    if (peer.kind === 'ws' && peer.steamId64) peer.kind = 'steam';
+    if (peer.kind === 'steam' || peer.steamId64) {
       let payload;
       if (isBin) payload = Buffer.isBuffer(obj) ? obj : Buffer.from(obj.buffer, obj.byteOffset, obj.byteLength);
       else payload = Buffer.from(JSON.stringify(obj), 'utf8');
@@ -410,13 +628,25 @@ function netSend(obj, toId) {
   for (const p of S.peers.values()) sendToPeer(p, obj);
 }
 
-function stopNetworking(reason) {
+function stopWs() {
   if (S.wsServer) { try { S.wsServer.close(); } catch (e) {} S.wsServer = null; }
   if (S.wsClient) { try { S.wsClient.end(); } catch (e) {} S.wsClient = null; }
+}
+
+function leaveLobby() {
   if (S.lobby) { try { S.lobby.leave(); } catch (e) {} S.lobby = null; }
-  // wyczyść "Join Game" ze Steama, żeby nie zostało nieaktualne
   if (S.steam) { try { S.steam.localplayer.setRichPresence('connect', ''); } catch (e) {} }
   if (S.p2pPoll) { clearInterval(S.p2pPoll); S.p2pPoll = null; }
+}
+
+function stopNetworking(reason) {
+  try { upnpClosePort(); } catch (e) {}
+  stopWs();
+  leaveLobby();
+  S.sessionTok = null;
+  S.directInfo = null;
+  S._wsUpgraded = false;
+  S._upgradeBusy = false;
   S.peers.clear();
   S.role = 'idle'; S.transport = null;
   if (reason !== 'restart') emitEvent('stopped', {});
@@ -714,18 +944,18 @@ function init(opts) {
   ipcMain.handle('st:host-steam', async () => { try { return { ok: true, ...(await hostSteam()) }; } catch (e) { return { ok: false, error: e.message }; } });
   ipcMain.handle('st:join-steam', async (ev, lobbyId) => { try { return { ok: true, ...(await joinSteamLobby(lobbyId)) }; } catch (e) { return { ok: false, error: e.message }; } });
   ipcMain.handle('st:invite', async () => { try { if (!S.lobby) return { ok: false, error: 'brak lobby' }; S.lobby.openInviteDialog(); return { ok: true }; } catch (e) { return { ok: false, error: e.message }; } });
-  ipcMain.handle('st:host-ws', async (ev, port) => { try { startWsServer(port || 27777); return { ok: true }; } catch (e) { return { ok: false, error: e.message }; } });
+  ipcMain.handle('st:host-ws', async (ev, port) => { try { await startWsServer(port || 27777); return { ok: true }; } catch (e) { return { ok: false, error: e.message }; } });
   ipcMain.handle('st:join-ws', async (ev, host, port) => { try { joinWs(host, port || 27777); return { ok: true }; } catch (e) { return { ok: false, error: e.message }; } });
   ipcMain.handle('st:host-direct', async (ev, port) => {
     try {
       const p = port || 27777;
-      startWsServer(p);
+      await startWsServer(p);
       const r = await upnpOpenPort(p);
-      log("HOST DIRECT: port " + p + (r.upnp ? " otwarty przez UPnP" : " BEZ UPnP (" + r.error + ")") + ", publiczny IP: " + (r.publicIp || "?"));
+      log("HOST DIRECT: port " + p + (r.upnp ? " otwarty przez UPnP" : " BEZ UPnP (" + r.error + ")") + ", publiczny IP: " + (r.publicIp ? "(ukryty)" : "nieznany"));
       return { ok: true, upnp: r.upnp, publicIp: r.publicIp, port: p, error: r.error };
     } catch (e) { return { ok: false, error: e.message }; }
   });
-  ipcMain.handle('st:stop', async () => { upnpClosePort(); stopNetworking(); return { ok: true }; });
+  ipcMain.handle('st:stop', async () => { stopNetworking(); return { ok: true }; });
   ipcMain.on('st:send', (ev, payload, toId) => netSend(payload, toId));
   ipcMain.handle('st:status', async () => ({
     role: S.role, transport: S.transport, myNick: S.myNick, myId: S.myId,

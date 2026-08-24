@@ -36,8 +36,8 @@ From then on the mod updates itself at every launch, so both players always matc
 [h2]How to play[/h2]
 Main menu → [b]Multiplayer[/b] → pick how you want to connect:
 [list]
-[*] [b]Host (Internet — direct)[/b] — recommended. The mod opens the port on your router by itself (UPnP) and shows your address [b]masked[/b], with show/hide and a copy button that never puts it on screen — safe to stream. Your friend pastes that address into [b]Join by address[/b] (the same button also covers LAN and VPN). This is the fastest route: it does NOT go through Steam relay servers, which throttle bandwidth and add latency.
-[*] [b]Host (Steam)[/b] + [b]Invite[/b] — zero setup, invite straight from your Steam friend list.
+[*] [b]Host (Internet — direct)[/b] — The mod opens the port on your router by itself (UPnP) and shows your address [b]masked[/b], with show/hide and a copy button that never puts it on screen — safe to stream. Your friend pastes that address into [b]Join by address[/b] (the same button also covers LAN and VPN). This is the fastest route: it does NOT go through Steam relay servers, which throttle bandwidth and add latency.
+[*] [b]Host (Steam)[/b] + [b]Invite[/b] — zero setup; Direct is used automatically when the port opens, else Steam P2P.
 [*] [b]Host LAN[/b] / [b]Join by address[/b] — same network, or a VPN mesh like Tailscale. One warning: from inside your own network you cannot reach your own public address — most routers refuse it — so when you are both on the same network, use the local 192.168.x.x address.
 [*] [b]Join by Lobby ID[/b] — paste an ID from the clipboard.
 [/list]
@@ -106,7 +106,7 @@ Full source on GitHub: [url=https://github.com/IronBamBam1990/sandtogether]githu
   const details = {
     title: TITLE,
     description: DESCRIPTION,
-    changeNote: 'v0.9.145-beta - World sync no longer treats a lost packet as delivered. The client now acks a contiguous watermark (batch 52 without 51 stays at 50) and NACKs the hole so the host resends those chunks from the current state — the Swiss-cheese world over Steam relay. Save transfer keeps its parts for ~20 s after world-end and resends missing indices instead of restarting the whole ~700 KB file. Steam P2P uses the same binary world frames as WebSocket (no base64) and caps live batches at ~48 KB; sendP2PPacket returning false now throttles the host. A slow peer still governs the ack watermark but no longer cuts everyone else\'s send budget to 25 %. Direct/UPnP and LAN get the same protocol fixes.',
+    changeNote: 'v0.9.146-beta - Steam invite now tries a direct connection automatically. Host (Steam) still uses the Friends lobby and overlay invite, but also opens TCP 27777 and sends the LAN/public address over P2P after hello. The joining player tries LAN first, then the public IP, with a session token so the open port is not a public lobby. If Direct works, the world stream uses WebSocket (full speed); Steam remains for invites and as fallback when UPnP/CGNAT fail. Also in this drop: contiguous world-ack watermark (no more Swiss-cheese holes on lost packets), resumable save transfer, Steam binary frames, 48 KB Steam batch cap.',
     previewPath: PREVIEW,
     contentPath: CONTENT,
     visibility: vis,

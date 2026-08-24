@@ -1,3 +1,7 @@
+## 0.9.146-beta
+
+**Steam invite now tries a direct connection automatically.** Host (Steam) still creates the Friends-only lobby and overlay invite — nothing new to share — but the host also opens TCP 27777 (UPnP when the router allows it) and, after the Steam hello, tells the joining friend the LAN and public address over P2P. The client tries LAN first (avoids hairpin NAT), then the public IP, with a session token so a random scanner cannot join the open port. If Direct comes up, the world stream moves to WebSocket (full bandwidth, binary frames); Steam stays for invites and as fallback when Direct drops or CGNAT blocks it. Old mods ignore the upgrade message and keep using Steam P2P.
+
 ## 0.9.145-beta
 
 **World holes over the internet (Steam relay and dropped packets) — fixed at the source.** The client used to acknowledge the *latest* world batch it had seen, so a lost packet in the middle counted as delivered. The host then never resent those rows, which is why a Steam session could look like Swiss cheese while LAN looked fine. The ack is now a contiguous watermark: batch 52 without 51 keeps the ack at 50, the hole is NACKed immediately, and those chunks are resent from the *current* state. The same path covers Direct/UPnP and LAN when a batch is dropped during menu or world load.

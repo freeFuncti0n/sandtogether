@@ -16,7 +16,7 @@
 			window.electron && window.electron.log && window.electron.log("info", "SandTogether:game", line);
 		} catch (e) {}
 	};
-	const VER = "0.9.145-beta";
+	const VER = "0.9.146-beta";
 	const AUTHOR = "Kamil Padula";
 	const CONTRIBUTORS = "dotNine, Knight-HD, DwoaC, Cr0ss0vr, TCentraL, AlyxiaFox, NanYu_sad.";
 	const VACUUM_CAPS = [500, 1000, 1500, 2000, 2500, 3000]; // tabela pojemności z kodu gry (moduł 6420)
@@ -46,7 +46,7 @@
 			btn_join_id: "Join by ID (clipboard)", lobby_copied: "Copied!",
 			clipboard_no_id: "Clipboard has no Lobby ID — first click the host's green Lobby ID line to copy it",
 			hint: "click header to hide (Ctrl+Shift+H)", by: "by " + AUTHOR + " + " + CONTRIBUTORS,
-			hosting_steam: "HOSTING (Steam) — invite your friend!", hosting_lan: (p) => "HOSTING (LAN :" + p + ")",
+			hosting_steam: "HOSTING (Steam) — invite your friend! Direct is used automatically when possible.", hosting_lan: (p) => "HOSTING (LAN :" + p + ")",
 			joined: (tr) => "CONNECTED to host (" + tr + ")", players: (n) => "Players online: " + n,
 			player_left: (n) => "Player left. Online: " + n, error: (m) => "Error: " + m,
 			creating_lobby: "creating lobby...", connect_first: "Connect first!",
@@ -73,7 +73,7 @@
 			unsupported: "⚠ Unsupported game version — the game updated and broke the mod. Re-run install, or check the Workshop page for an update.",
 			mp_btn: "Multiplayer",
 			lb_title: "MULTIPLAYER", lb_sub: "SandTogether co-op — up to 4 players",
-			lb_host_steam_d: "Play over the internet — invite friends from your Steam friend list",
+			lb_host_steam_d: "Invite from your Steam friends list. Direct is used automatically when the port opens; otherwise Steam relay.",
 			lb_host_lan_d: "Local network or VPN (Tailscale, Radmin...)",
 			lb_join_lan_d: "Paste the address your friend gave you — works for an internet host, a LAN or a VPN",
 			lb_join_id_d: "Join with a Lobby ID copied to the clipboard",
@@ -83,6 +83,11 @@
 			lb_play_note: "Your world is sent to joined players automatically. You can also just use Continue / Load Game.",
 			lb_wait_host: "Waiting for the host's world — it downloads and loads automatically.",
 			lb_hint: "Tip: a Steam invite can be accepted at ANY time — everything else happens automatically.",
+			hybrid_direct: "Direct link on — Steam is only used for invites",
+			hybrid_steam_fb: "Direct unreachable — staying on Steam P2P",
+			hybrid_trying: "Trying a direct connection…",
+			peer_kind_ws: "Direct",
+			peer_kind_steam: "Steam",
 			btn_host_direct: "Host (Internet — direct)",
 			lb_host_direct_d: "Full speed, no Steam relay. Opens the port on your router automatically (UPnP).",
 			direct_ready: "DIRECT hosting — give your friend the address below",
@@ -111,7 +116,7 @@
 			btn_join_id: "Dołącz po ID (schowek)", lobby_copied: "Skopiowano!",
 			clipboard_no_id: "Schowek nie zawiera Lobby ID — najpierw kliknij zieloną linię Lobby ID u hosta, żeby je skopiować",
 			hint: "kliknij nagłówek by ukryć (Ctrl+Shift+H)", by: "autor: " + AUTHOR + " + " + CONTRIBUTORS,
-			hosting_steam: "HOST (Steam) — zaproś znajomego!", hosting_lan: (p) => "HOST (LAN :" + p + ")",
+			hosting_steam: "HOST (Steam) — zaproś znajomego! Direct włączy się sam, gdy będzie można.", hosting_lan: (p) => "HOST (LAN :" + p + ")",
 			joined: (tr) => "POŁĄCZONO z hostem (" + tr + ")", players: (n) => "Gracze online: " + n,
 			player_left: (n) => "Gracz wyszedł. Online: " + n, error: (m) => "Błąd: " + m,
 			creating_lobby: "tworzenie lobby...", connect_first: "Najpierw połącz się!",
@@ -138,7 +143,7 @@
 			unsupported: "⚠ Niewspierana wersja gry — gra się zaktualizowała i rozjechała moda. Uruchom install ponownie albo sprawdź update na Warsztacie.",
 			mp_btn: "Multiplayer",
 			lb_title: "MULTIPLAYER", lb_sub: "SandTogether co-op — do 4 graczy",
-			lb_host_steam_d: "Graj przez internet — zaproś znajomych z listy Steam",
+			lb_host_steam_d: "Zaproś z listy znajomych Steam. Direct włącza się sam, gdy port się otworzy; inaczej zostaje relay Steama.",
 			lb_host_lan_d: "Sieć lokalna albo VPN (Tailscale, Radmin...)",
 			lb_join_lan_d: "Wklej adres, który dostałeś od kolegi — działa dla hosta z internetu, LAN i VPN",
 			lb_join_id_d: "Dołącz po Lobby ID skopiowanym do schowka",
@@ -148,6 +153,11 @@
 			lb_play_note: "Twój świat wyśle się dołączonym graczom automatycznie. Możesz też po prostu użyć Kontynuuj / Wczytaj.",
 			lb_wait_host: "Czekam na świat hosta — pobierze się i wczyta automatycznie.",
 			lb_hint: "Tip: zaproszenie Steam możesz przyjąć w KAŻDEJ chwili — reszta dzieje się sama.",
+			hybrid_direct: "Direct działa — Steam tylko do zaproszeń",
+			hybrid_steam_fb: "Direct niedostępny — zostaję na Steam P2P",
+			hybrid_trying: "Próbuję połączenia bezpośredniego…",
+			peer_kind_ws: "Direct",
+			peer_kind_steam: "Steam",
 			btn_host_direct: "Host (internet — bezpośrednio)",
 			lb_host_direct_d: "Pełna prędkość, bez relaya Steama. Sam otwiera port na routerze (UPnP).",
 			direct_ready: "Hostujesz BEZPOŚREDNIO — podaj koledze adres poniżej",
@@ -176,7 +186,7 @@
 			btn_join_id: "通过ID加入(剪贴板)", lobby_copied: "已复制!",
 			clipboard_no_id: "剪贴板中没有房间ID——请先点击房主的绿色房间ID行进行复制",
 			hint: "点击标题栏隐藏 (Ctrl+Shift+H)", by: "作者:" + AUTHOR + " + " + CONTRIBUTORS,
-			hosting_steam: "正在创建房间(Steam)——邀请你的朋友吧!", hosting_lan: (p) => "正在创建房间(局域网 :" + p + ")",
+			hosting_steam: "正在创建房间(Steam)——邀请朋友!端口开通后会自动直连。", hosting_lan: (p) => "正在创建房间(局域网 :" + p + ")",
 			joined: (tr) => "已连接到房主(" + tr + ")", players: (n) => "在线玩家:" + n,
 			player_left: (n) => "玩家已离开。在线人数:" + n, error: (m) => "错误:" + m,
 			creating_lobby: "正在创建房间...", connect_first: "请先连接!",
@@ -202,7 +212,7 @@
 			unsupported: "⚠ 不支持的游戏版本——游戏已更新并导致模组失效。请重新运行安装程序,或前往创意工坊页面查看更新。",
 			mp_btn: "多人游戏",
 			lb_title: "多人游戏", lb_sub: "SandTogether 合作模式——最多4名玩家",
-			lb_host_steam_d: "通过互联网游玩——从Steam好友列表邀请朋友",
+			lb_host_steam_d: "从Steam好友列表邀请。端口开通后自动直连；否则走Steam中继。",
 			lb_host_lan_d: "局域网或VPN(Tailscale、Radmin等)",
 			lb_join_lan_d: "粘贴好友给你的地址 — 互联网房主、局域网和 VPN 均可",
 			lb_join_id_d: "使用复制到剪贴板的房间ID加入",
@@ -212,6 +222,11 @@
 			lb_play_note: "你的世界会自动发送给已加入的玩家。你也可以直接使用继续/加载游戏。",
 			lb_wait_host: "正在等待房主的世界——它会自动下载并加载。",
 			lb_hint: "提示:Steam邀请可以在任何时候接受——其余的都会自动完成。",
+			hybrid_direct: "直连已开启 — Steam仅用于邀请",
+			hybrid_steam_fb: "直连不可达 — 继续使用Steam P2P",
+			hybrid_trying: "正在尝试直连…",
+			peer_kind_ws: "直连",
+			peer_kind_steam: "Steam",
 			btn_host_direct: "创建房间(互联网 — 直连)",
 			lb_host_direct_d: "全速直连,不经过Steam中继。自动在路由器上开放端口(UPnP)。",
 			direct_ready: "直连主机模式 — 把下面的地址发给朋友",
@@ -508,9 +523,10 @@
 				setStatus(t("joined", ev.transport));
 			} else if (ev.kind === "peer-hello" || ev.kind === "peer-connected") {
 				const isNew = !ST.peers.has(ev.id);
-				if (isNew) ST.peers.set(ev.id, { nick: ev.nick || "?", x: 0, y: 0, tx: 0, ty: 0, lastSeen: performance.now() });
+				if (isNew) ST.peers.set(ev.id, { nick: ev.nick || "?", x: 0, y: 0, tx: 0, ty: 0, lastSeen: performance.now(), kind: ev.peerKind || (ST.net.transport === "ws" ? "ws" : "steam") });
 				if (ev.nick) ST.peers.get(ev.id).nick = ev.nick;
-				if (ev.kind === "peer-hello") addChat("★", t("chat_joined", ev.nick || "?")); // widoczna informacja KTO dołączył
+				if (ev.peerKind) ST.peers.get(ev.id).kind = ev.peerKind;
+				if (ev.kind === "peer-hello" && isNew) addChat("★", t("chat_joined", ev.nick || "?")); // widoczna informacja KTO dołączył
 				// 0.9.85: DOKLADNIE RAZ na peera — odsylanie hello na kazde peer-hello tworzylo petle
 					if (ST._nickCustom && !ST._greeted.has(ev.id)) {
 						ST._greeted.add(ev.id);
@@ -549,6 +565,29 @@
 				if (ST._droppedSqs) ST._droppedSqs.clear();
 				resetWorldQueue();        // queue, row hashes and congestion state are all per session
 				setClientPaused(false);
+			} else if (ev.kind === "upgrading") { setStatus(t("hybrid_trying"), "#fd5");
+			} else if (ev.kind === "upgraded") {
+				ST.net.transport = ev.transport;
+				for (const p of ST.peers.values()) p.kind = ev.transport === "ws" ? "ws" : "steam";
+				if (ev.transport === "ws") {
+					ST._directMode = !isLocalAddr(ev.host);
+					setStatus(t("hybrid_direct"), "#5f5");
+					log("HYBRID: Direct WS — host=" + ev.host + " port=" + ev.port);
+				} else if (ev.fallback) {
+					ST._directMode = false;
+					setStatus(t("hybrid_steam_fb"), "#fd5");
+					log("HYBRID: fallback Steam P2P");
+				}
+			} else if (ev.kind === "peer-upgraded") {
+				const p = ST.peers.get(ev.id);
+				if (p) p.kind = ev.transport;
+				if (ST.net.role === "host" && ST.peers.size) {
+					if (!anySteamPeer()) setStatus(t("hybrid_direct"), "#5f5");
+					else if (ev.transport === "steam") setStatus(t("hybrid_steam_fb"), "#fd5");
+				}
+				log("HYBRID: peer", ev.id, "teraz", ev.transport);
+			} else if (ev.kind === "upgrade-failed") {
+				setStatus(t("hybrid_steam_fb"), "#fd5");
 			} else if (ev.kind === "reconnecting") { setStatus(t("reconnecting", ev.attempt), "#fd5");
 			} else if (ev.kind === "steam-congested") {
 				// sendP2PPacket returned false — Steam's send buffer is full. Shrink the mirror budget now
@@ -576,7 +615,7 @@
 			try { ST._nickCustom = localStorage.getItem("st_nick") || null; } catch (e) { ST._nickCustom = null; }
 			ST._myNick = ST._nickCustom || s.myNick || null; // własny nick > nick Steam > default (feedback TCentraL: LAN = "Player" na stałe)
 			ST._gameFp = s.gameFp || null; // odcisk buildu gry (guard różnych buildów między graczami)
-			for (const p of s.peers) { const old = ST.peers.get(p.id); ST.peers.set(p.id, Object.assign({ x: 0, y: 0, tx: 0, ty: 0 }, old || {}, { nick: p.nick, lastSeen: performance.now() })); } // 0.9.82: zachowaj modVer/ping znanego peera
+			for (const p of s.peers) { const old = ST.peers.get(p.id); ST.peers.set(p.id, Object.assign({ x: 0, y: 0, tx: 0, ty: 0 }, old || {}, { nick: p.nick, kind: p.kind, lastSeen: performance.now() })); } // 0.9.82: zachowaj modVer/ping znanego peera
 			// 0.9.76 HANDSHAKE: renderer wstal (start gry ALBO przeladowanie po wczytaniu swiata).
 			// Polaczenie zyje w procesie main, wiec host NIE wie, ze stracilismy caly stan sesji —
 			// mowimy mu to wprost i podajemy, na jakim swiecie jestesmy (decyduje: stream czy save).
@@ -1208,7 +1247,9 @@
 			// 0.9.145: Steam P2P — twardy sufit jak przy save (48 KB); Valve-relay gubi wieksze paczki.
 			const STEAM_PKT = 48 * 1024;
 			let HARD_CAP = Math.floor((150 * 1000 * 1000) / 8 / 10);
-			if (ST.net.transport === "steam") HARD_CAP = Math.min(HARD_CAP, STEAM_PKT);
+			// 0.9.146: 48 KB tylko gdy KTOS jeszcze siedzi na Steam P2P. Po hybrid-upgrade wszystkich — pelny WS.
+			const anySteam = anySteamPeer();
+			if (anySteam) HARD_CAP = Math.min(HARD_CAP, STEAM_PKT);
 			// budzet PROPORCJONALNY do cyklu: przy 8 ms paczki sa male, przy 100 ms duze — pasmo/s stale
 			// 0.9.145: applyBrake NIE od najwolniejszego peera. minAck/lag zostaje globalny (inaczej dziury
 			// u wolnego), ale kolejka nakladania VPN-klienta nie moze dlawic Direct-klienta do 25 %.
@@ -1243,7 +1284,7 @@
 			}
 			// bez kompresji bajty wyjściowe = bajty zserializowane, więc NIE dzielimy przez współczynnik
 			let rawBudget = willSendRaw ? Math.max(256 * 1024, budget) : Math.max(256 * 1024, Math.floor(budget / Math.max(0.02, ratio)));
-			if (ST.net.transport === "steam") rawBudget = Math.min(rawBudget, Math.floor(STEAM_PKT / Math.max(0.02, ratio)));
+			if (anySteam) rawBudget = Math.min(rawBudget, Math.floor(STEAM_PKT / Math.max(0.02, ratio)));
 			const maxN = Math.max(2, Math.min(6000, Math.floor(budget / bpc) * 8));
 			const nearN = Math.min(3000, maxN);              // what players can actually see gets the budget first
 			// Fast lane usage from the PREVIOUS batch, which is stable frame to frame. Without it we
@@ -3324,6 +3365,19 @@
 			|| (o1 === 192 && o2 === 168) || (o1 === 172 && o2 >= 16 && o2 <= 31)
 			|| (o1 === 169 && o2 === 254) || (o1 === 100 && o2 >= 64 && o2 <= 127);
 	}
+	function anySteamPeer() {
+		if (!ST.peers.size) return ST.net.transport === "steam";
+		for (const p of ST.peers.values()) if (p.kind !== "ws") return true;
+		return false;
+	}
+	function sessionTrName() {
+		if (ST.net.transport === "ws") return ST._directMode ? "Internet" : "LAN";
+		if (ST.net.transport === "steam") {
+			if (ST.peers.size && !anySteamPeer()) return "Direct";
+			return "Steam";
+		}
+		return ST.net.transport || "";
+	}
 
 	function updatePingDisplay() {
 		if (!ST._hud) return;
@@ -3336,7 +3390,8 @@
 		// Relay Valve: gdy obieg pakietu liczy sie w SEKUNDACH, to nie jest "slabe lacze" tylko dlawiony relay —
 		// akcje gracza stoja w tej samej kolejce co transfer swiata, wiec nic sie nie dzieje w swiecie.
 		try {
-			if (ST.net.transport === "steam" && ST.net.role !== "idle") {
+			let onSteam = anySteamPeer();
+			if (onSteam && ST.net.role !== "idle") {
 				let worst = 0;
 				for (const p of ST.peers.values()) if (p.ping != null && p.ping > worst) worst = p.ping;
 				if (worst > 5000 && performance.now() - (ST._relayWarnT || 0) > 20000) {
@@ -3607,7 +3662,7 @@
 		const hud = document.getElementById("st-hud"); if (!hud) return;
 		const q = (id) => hud.querySelector(id);
 		const role = ST.net.role;
-		const trName = ST.net.transport === "steam" ? "Steam" : (ST._directMode ? "Internet" : "LAN");
+		const trName = sessionTrName();
 		const badge = q("#st-badge");
 		const roleColor = role === "host" ? "#5f5" : role === "client" ? "#6cf" : "#f66";
 		if (badge) {
@@ -3644,7 +3699,8 @@
 				mk("#5f5", ST._myNick || "Player", "(" + t("lb_you") + (role === "host" ? " · host)" : ")"));
 				for (const [, pr] of ST.peers) {
 					const ok = !pr.modVer || pr.modVer === VER;
-					mk(ok ? "#5f5" : "#f66", pr.nick || "?", ok ? "" : pr.modVer);
+					const via = pr.kind === "ws" ? t("peer_kind_ws") : (pr.kind === "steam" ? t("peer_kind_steam") : "");
+					mk(ok ? "#5f5" : "#f66", pr.nick || "?", (via ? via : "") + (ok ? "" : " " + (pr.modVer || "")));
 				}
 			}
 		}
@@ -3909,7 +3965,7 @@
 			} else {
 				// LOBBY: badge roli + status + lobby id + zaproś + lista graczy + świat + rozłącz
 				const badge = document.createElement("div");
-				const trName = ST.net.transport === "steam" ? "Steam" : (ST._directMode ? "Internet" : "LAN");
+				const trName = sessionTrName();
 				badge.style.cssText = "font-weight:800;font-size:15px;margin:2px 0 4px;color:" + (ST.net.role === "host" ? "#5f5" : "#6cf");
 				badge.textContent = ST.net.role === "host" ? t("badge_host", trName) : t("badge_client", trName);
 				p.appendChild(badge);
@@ -4039,7 +4095,10 @@
 					return r;
 				};
 				pl2.appendChild(mk(ST._myNick || "Player", "(" + t("lb_you") + ") " + VER, true));
-				for (const [, pr] of ST.peers) pl2.appendChild(mk(pr.nick || "?", pr.modVer || "?", !pr.modVer || pr.modVer === VER));
+				for (const [, pr] of ST.peers) {
+					const via = pr.kind === "ws" ? t("peer_kind_ws") : (pr.kind === "steam" ? t("peer_kind_steam") : "");
+					pl2.appendChild(mk(pr.nick || "?", (via ? via + " · " : "") + (pr.modVer || "?"), !pr.modVer || pr.modVer === VER));
+				}
 			}
 		}
 	}
