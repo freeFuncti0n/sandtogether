@@ -16,7 +16,7 @@
 			window.electron && window.electron.log && window.electron.log("info", "SandTogether:game", line);
 		} catch (e) {}
 	};
-	const VER = "0.9.144-beta";
+	const VER = "0.9.145-beta";
 	const AUTHOR = "Kamil Padula";
 	const CONTRIBUTORS = "dotNine, Knight-HD, DwoaC, Cr0ss0vr, TCentraL, AlyxiaFox, NanYu_sad.";
 	const VACUUM_CAPS = [500, 1000, 1500, 2000, 2500, 3000]; // tabela pojemności z kodu gry (moduł 6420)
@@ -122,7 +122,7 @@
 			world_imported: (n) => "Świat '" + n + "' zaimportowany! Wczytaj go: menu → Load Game",
 			world_imported_loaded: (n) => "Dołączono do świata hosta '" + n + "' — jesteś w grze!",
 			tech_rejected: (id) => "Badanie '" + id + "' odrzucone przez hosta (wymagania/koszt) — spróbuj ponownie",
-			tech_repaired: (n) => "Naprawiono " + n + " uszkodzonych badań — budynki/przedmioty przywrócone",
+			tech_repaired: (n) => "Naprawiono " + n + " uszkodzonych badań — budynki/przedmioty przywrócone",
 			hairpin_hint: "Połączenie odrzucone. Jeśli host jest w TEJ SAMEJ sieci co Ty, użyj jego adresu lokalnego (192.168.x.x) — routery zwykle nie pozwalają łączyć się z własnym publicznym IP.",
 			waiting_host_world: "Połączono — czekam aż host wejdzie do świata (wczyta się automatycznie)...",
 			receiving: (a, b) => "Odbieranie świata: " + a + "/" + b,
@@ -545,9 +545,15 @@
 				ST._fireQ = []; ST._cryoQ = []; ST._grabbedCells.clear(); ST._placedCells.clear(); ST._volcQ = []; ST._caulkQ = []; ST._caulkRmQ = []; ST._shakeQ = [];
 				ST._gotHostWorld = false;
 				ST._lastAppliedSq = null; // drop the ack so it cannot throttle the next session
+				if (ST._appliedSqs) ST._appliedSqs.clear();
+				if (ST._droppedSqs) ST._droppedSqs.clear();
 				resetWorldQueue();        // queue, row hashes and congestion state are all per session
 				setClientPaused(false);
 			} else if (ev.kind === "reconnecting") { setStatus(t("reconnecting", ev.attempt), "#fd5");
+			} else if (ev.kind === "steam-congested") {
+				// sendP2PPacket returned false — Steam's send buffer is full. Shrink the mirror budget now
+				// (the ack-based controller cannot see this: the API never reports queue depth).
+				if (ST.wsx) ST.wsx.rate = Math.max(0.02, (ST.wsx.rate || 1) * 0.7);
 			} else if (ev.kind === "version-mismatch") setStatus(t("ver_mismatch"), "#f66");
 			else if (ev.kind === "error" && /ECONNREFUSED/i.test(String(ev.message || "")) && /(d{1,3}).(d{1,3}).(d{1,3}).(d{1,3})/.test(String(ev.message || ""))) {
 				// 0.9.133: publiczny adres + odmowa = najczesciej proba polaczenia z wlasnym IP z tej samej sieci
@@ -695,18 +701,26 @@
 		} else if (msg.t === "wc") {
 			applyWorldBatch(msg).catch((e) => { if ((ST._applyErrN = (ST._applyErrN || 0) + 1) <= 3) log("apply error:", e.message, String(e.stack || "").split(String.fromCharCode(10)).slice(0, 4).join(" | "), "bin=" + (msg.__bytes ? msg.__bytes.length : "BRAK") + " d=" + (msg.d ? msg.d.length : "BRAK") + " z=" + msg.z); });
 		} else if (msg.t === "wcack") {
-			// Client acks the last APPLIED batch. This is the only signal we have for how far behind it is:
+			// Client acks a CONTIGUOUS watermark (sq = highest fully applied with no holes below it).
 			// Steam's send buffer is invisible to us and sendP2PPacket never reports that it is full.
-			if (ST.net.role === "host" && typeof msg.sq === "number") {
+			if (ST.net.role === "host") {
 				const p = ST.peers.get(from);
-				if (p) { if (p.ackSq !== msg.sq) ST.wsx.ackAdvanceT = performance.now(); p.ackSq = msg.sq; p.qd = msg.qd | 0; ST.wsx.ackSeen = true; } // per peer, so the slowest one governs
-				// 0.9.78: paczki potwierdzone przez NAJWOLNIEJSZEGO klienta mozna zapomniec
-				const w0 = ST.wsx;
-				if (w0.unacked && w0.unacked.size) {
-					let minAck = null;
-					for (const pp of ST.peers.values()) if (typeof pp.ackSq === "number" && (minAck === null || pp.ackSq < minAck)) minAck = pp.ackSq;
-					if (minAck !== null) for (const sq of [...w0.unacked.keys()]) if (sq <= minAck) w0.unacked.delete(sq);
+				if (p && typeof msg.qd === "number") p.qd = msg.qd | 0;
+				if (p && typeof msg.sq === "number") {
+					const prev = p.ackSq;
+					if (p.ackSq !== msg.sq) ST.wsx.ackAdvanceT = performance.now();
+					p.ackSq = msg.sq;
+					ST.wsx.ackSeen = true; // per peer, so the slowest one governs lag
+					// Old client (no wm flag) reports the LATEST received/applied sq, not a watermark.
+					// A jump 50 → 52 therefore means 51 was lost, not delivered — requeue it now.
+					if (!msg.wm && typeof prev === "number" && msg.sq > prev + 1) {
+						const skipped = [];
+						for (let s = prev + 1; s < msg.sq; s++) skipped.push(s);
+						requeueUnackedSeqs(skipped, "skok ack starego klienta");
+					}
 				}
+				if (Array.isArray(msg.gaps) && msg.gaps.length) requeueUnackedSeqs(msg.gaps, "luki od klienta");
+				commitAckedBatches();
 			}
 		} else if (msg.t === "act") {
 			if (ST.net.role === "host") replayAction(msg, from);
@@ -804,17 +818,17 @@
 			ST._worldRx.ended = true;
 			maybeFinishRx();
 		} else if (msg.t === "world-need") {
-			// host: klient prosi o brakujące kawałki -> ponów je (priorytetowo)
-			// 0.9.75: paczki trzymamy tylko dla BIEŻĄCEGO transferu. Prośba o starszy tid (klient utknął
-			// na poprzednim) = odesłanie mu paczek z nowego transferu, które i tak odrzuci → wieczne "recovering".
-			// Zamiast tego startujemy świeży, kompletny transfer.
+			// host: klient prosi o brakujące kawałki -> ponów je (priorytetowo).
+			// 0.9.145: NEVER restart the whole save on a stale tid — that threw away the parts the
+			// client already had. Ignore the old request; keep the current transfer resumable.
 			if (ST._wtx && msg.tid !== undefined && ST._wtx.tid !== undefined && msg.tid !== ST._wtx.tid) {
-				if (performance.now() - (ST._wtxRestartT || 0) < 3000) { return; } // 0.9.87: nie restartuj częściej niż co 3 s
-				ST._wtxRestartT = performance.now();
-				log("world-need dla starego transferu tid " + msg.tid + " (mamy " + ST._wtx.tid + ") — wysyłam świat od nowa");
-				ST._autoSendT = 0; ST._wtx = null; sendWorld(); return;
+				log("world-need dla starego transferu tid " + msg.tid + " (mamy " + ST._wtx.tid + ") — ignoruję, nie restartuję");
+				return;
 			}
-			if (ST._wtx && Array.isArray(msg.idx)) for (const i of msg.idx) if (ST._wtx.parts[i] !== undefined) ST._wtx.queue.push(i);
+			if (ST._wtx && Array.isArray(msg.idx)) {
+				for (const i of msg.idx) if (ST._wtx.parts[i] !== undefined) ST._wtx.queue.push(i);
+				if (ST._wtxHold) { clearTimeout(ST._wtxHold); ST._wtxHold = null; }
+			}
 			pumpWtx();
 		}
 	}
@@ -970,6 +984,91 @@
 		if (w.unacked) w.unacked.clear();
 		log("RESET potwierdzen dla", peerId || "wszystkich", "(" + why + ") — wznawiam pelna wysylke");
 	}
+	// 0.9.145: contiguous ACK watermark. sq is only counted after drainApplyQ finishes a batch.
+	// Holes (received 52 without 51) stay in _appliedSqs and do NOT raise the watermark, so the host
+	// never treats a lost packet as delivered. Restoring old row hashes on NACK would hide later
+	// diffs — we delete rowH for those chunks so the CURRENT state is resent in full.
+	function noteAppliedSq(sq) {
+		if (typeof sq !== "number") return;
+		if (!ST._appliedSqs) ST._appliedSqs = new Set();
+		ST._appliedSqs.add(sq);
+		let wm = ST._lastAppliedSq;
+		if (wm == null) wm = 0;
+		// Host resetAckBaseline / full resync jumps seq by hundreds. Those old numbers will never
+		// arrive, so a hole of >32 after we already had a watermark means a new stream — snap
+		// rather than stall forever. Do NOT snap from wm=0 (menu-drop of the first flood).
+		if (wm > 0 && sq > wm + 32) {
+			ST._lastAppliedSq = sq;
+			ST._appliedSqs.clear();
+			if (ST._droppedSqs) {
+				for (const s of [...ST._droppedSqs]) if (s <= sq) ST._droppedSqs.delete(s);
+			}
+			return;
+		}
+		while (ST._appliedSqs.has(wm + 1)) {
+			wm += 1;
+			ST._appliedSqs.delete(wm);
+			if (ST._droppedSqs) ST._droppedSqs.delete(wm);
+		}
+		ST._lastAppliedSq = wm;
+		if (ST._appliedSqs.size > 256) {
+			const keep = [...ST._appliedSqs].sort((a, b) => a - b).slice(-128);
+			ST._appliedSqs = new Set(keep);
+		}
+	}
+	function noteDroppedSq(sq) {
+		if (typeof sq !== "number") return;
+		if (!ST._droppedSqs) ST._droppedSqs = new Set();
+		ST._droppedSqs.add(sq);
+		if (ST._droppedSqs.size > 256) {
+			const keep = [...ST._droppedSqs].sort((a, b) => a - b).slice(-128);
+			ST._droppedSqs = new Set(keep);
+		}
+	}
+	function collectAckGaps() {
+		// Do not NACK while we would just drop the resend (menu / mid-load).
+		if (ST._loadingWorld) return [];
+		const myScene = ST.state && ST.state.store && ST.state.store.scene && ST.state.store.scene.active;
+		if (myScene === 1) return [];
+		const wm = ST._lastAppliedSq || 0;
+		const have = new Set();
+		if (ST._appliedSqs) for (const s of ST._appliedSqs) have.add(s);
+		if (ST._applyQ) for (const it of ST._applyQ) if (typeof it.sq === "number") have.add(it.sq);
+		let maxSeen = wm;
+		for (const s of have) if (s > maxSeen) maxSeen = s;
+		if (ST._droppedSqs) for (const s of ST._droppedSqs) if (s > maxSeen) maxSeen = s;
+		const gaps = [];
+		for (let s = wm + 1; s <= maxSeen && gaps.length < 32; s++) {
+			if (have.has(s)) continue;
+			gaps.push(s);
+		}
+		return gaps;
+	}
+	function requeueUnackedSeqs(sqs, why) {
+		const w = ST.wsx;
+		if (!w || !w.unacked || !sqs || !sqs.length) return;
+		let lost = 0;
+		const hit = [];
+		for (const sq of sqs) {
+			const rec = w.unacked.get(sq);
+			if (!rec) continue;
+			w.unacked.delete(sq);
+			hit.push(sq);
+			for (const idx of rec.idx) { if (w.rowH) w.rowH.delete(idx); w.pending.add(idx); lost++; }
+		}
+		if (lost && performance.now() - (w.nackLogT || 0) > 1000) {
+			w.nackLogT = performance.now();
+			log("NACK: " + lost + " chunkow z paczek [" + hit.join(",") + "] ponownie w kolejce (" + why + "), kolejka " + w.pending.size);
+		}
+	}
+	function commitAckedBatches() {
+		const w0 = ST.wsx;
+		if (!w0 || !w0.unacked || !w0.unacked.size) return;
+		let minAck = null;
+		for (const pp of ST.peers.values()) if (typeof pp.ackSq === "number" && (minAck === null || pp.ackSq < minAck)) minAck = pp.ackSq;
+		if (minAck === null) return;
+		for (const sq of [...w0.unacked.keys()]) if (sq <= minAck) w0.unacked.delete(sq);
+	}
 	function enqueueFullWorld() {
 		if (!ST.state) return;
 		// 0.9.81: handshake, peer-hello i resync potrafia trafic w te sama chwile — bez tej blokady
@@ -995,7 +1094,11 @@
 		if (ST.wsx.rowH) ST.wsx.rowH.clear();   // stale hashes would suppress sends in the new world
 		ST.wsx.sweep = 0;
 		ST.wsx.bpc = 0; ST.wsx.lastNear = 0;    // re-measure chunk cost, the new world compresses differently
-		ST.wsx.seq = 0; ST.wsx.ackSeen = false; ST.wsx.lag = 0; ST.wsx.rate = 0.25; ST.wsx.boost = 1; ST.wsx.buildMs = 0; // 0.9.78: start ostrozny, regulator sam podniesie if (ST.wsx.unacked) ST.wsx.unacked.clear(); // start un-throttled
+		ST.wsx.seq = 0; ST.wsx.ackSeen = false; ST.wsx.lag = 0; ST.wsx.rate = 0.25; ST.wsx.boost = 1; ST.wsx.buildMs = 0; // 0.9.78: start ostrozny, regulator sam podniesie
+		if (ST.wsx.unacked) ST.wsx.unacked.clear();
+		ST._lastAppliedSq = null;
+		if (ST._appliedSqs) ST._appliedSqs.clear();
+		if (ST._droppedSqs) ST._droppedSqs.clear();
 	}
 
 	function scanDirty(state) {
@@ -1062,19 +1165,15 @@
 				}
 			} else w.lag = 0;
 		}
-		// 0.9.78: paczki bez potwierdzenia po 10 s traktujemy jako ZGUBIONE (typowe dla Steam P2P).
-		// Bez tego ich wiersze zostaja u klienta puste NA ZAWSZE (host ma je za dostarczone) — to jest
-		// przyczyna "dziurawego swiata" przez internet przy dzialajacym LAN.
-		// 0.9.90: nie w trakcie pierwszej synchronizacji (wielka kolejka) — tam brak ACK znaczy "nie nadąża", nie "zgubione"
+		// 0.9.78: paczki bez potwierdzenia po 20 s traktujemy jako ZGUBIONE (typowe dla Steam P2P).
+		// 0.9.145: nawet gdy ACK sie posuwa — TA sekwencja jest 20 s stara, wiec to dziura, nie "klient nie nadaza".
 		if (w.ackSeen && w.unacked && w.unacked.size && w.pending.size < 200) {
-			let lost = 0;
+			const timed = [];
 			for (const [sq, rec] of [...w.unacked]) {
 				if (now - rec.t < 20000) continue;
-				if (w.ackAdvanceT && now - w.ackAdvanceT < 20000) continue; // ACK sie posuwa => klient tylko nie nadaza
-				w.unacked.delete(sq);
-				for (const idx of rec.idx) { if (w.rowH) w.rowH.delete(idx); w.pending.add(idx); lost++; }
+				timed.push(sq);
 			}
-			if (lost && now - (w.lostLogT || 0) > 3000) { w.lostLogT = now; log("STRATA: " + lost + " chunkow bez potwierdzenia — wysylam je od nowa (kolejka " + w.pending.size + ")"); }
+			if (timed.length) requeueUnackedSeqs(timed, "timeout 20s");
 		}
 		w.busy = true; w.lastBatch = now;
 		try {
@@ -1106,13 +1205,23 @@
 			else { /* strefa komfortu: trzymamy poziom */ }
 			const fast = w.boost || 1;
 			// 0.9.93: SUFIT 150 Mbit/s = 18,75 MB/s; paczki lecą ~10x/s, więc 1,875 MB na paczkę.
-			const HARD_CAP = Math.floor((150 * 1000 * 1000) / 8 / 10);
+			// 0.9.145: Steam P2P — twardy sufit jak przy save (48 KB); Valve-relay gubi wieksze paczki.
+			const STEAM_PKT = 48 * 1024;
+			let HARD_CAP = Math.floor((150 * 1000 * 1000) / 8 / 10);
+			if (ST.net.transport === "steam") HARD_CAP = Math.min(HARD_CAP, STEAM_PKT);
 			// budzet PROPORCJONALNY do cyklu: przy 8 ms paczki sa male, przy 100 ms duze — pasmo/s stale
-						// ile paczek czeka u najwolniejszego klienta na NALOZENIE — jesli rosnie, wysylamy mniej,
-			// bo dosypywanie danych szybciej niz klient je nakłada tylko puchnie mu kolejke (0.9.111: 548 MB).
-			let worstQd = 0;
-			for (const pp of ST.peers.values()) if ((pp.qd | 0) > worstQd) worstQd = pp.qd | 0;
-			const applyBrake = worstQd >= 12 ? 0.25 : worstQd >= 6 ? 0.5 : worstQd >= 3 ? 0.8 : 1;
+			// 0.9.145: applyBrake NIE od najwolniejszego peera. minAck/lag zostaje globalny (inaczej dziury
+			// u wolnego), ale kolejka nakladania VPN-klienta nie moze dlawic Direct-klienta do 25 %.
+			let worstQd = 0, worstQdFast = 0, anyFast = false;
+			for (const pp of ST.peers.values()) {
+				const qd = pp.qd | 0;
+				if (qd > worstQd) worstQd = qd;
+				if ((pp.ping || 0) > 800) continue;
+				anyFast = true;
+				if (qd > worstQdFast) worstQdFast = qd;
+			}
+			const brakeQd = anyFast ? worstQdFast : 0;
+			const applyBrake = brakeQd >= 12 ? 0.25 : brakeQd >= 6 ? 0.5 : brakeQd >= 3 ? 0.8 : 1;
 			w.qd = worstQd;
 			const budget = Math.min(HARD_CAP, Math.floor(4000 * (w.gap || 33) * w.rate * fast * applyBrake)); // 4 KB/ms = ~4 MB/s bazowo // 8 KB x 30/s = to samo co 24 KB x 10/s  // 0.9.78: 24 KB/paczke = sufit ~240 KB/s (~1,9 Mbit/s) zamiast ~960 KB/s.
 			// LAN tego nie odczuje (i tak rzadko mamy tyle zmian), a internet przestaje sie dlawic wlasnym strumieniem.
@@ -1133,7 +1242,8 @@
 				if (!(A === 127 || A === 10 || (A === 192 && B === 168) || (A === 172 && B >= 16 && B <= 31) || (A === 169 && B === 254))) willSendRaw = false;
 			}
 			// bez kompresji bajty wyjściowe = bajty zserializowane, więc NIE dzielimy przez współczynnik
-			const rawBudget = willSendRaw ? Math.max(256 * 1024, budget) : Math.max(256 * 1024, Math.floor(budget / Math.max(0.02, ratio)));
+			let rawBudget = willSendRaw ? Math.max(256 * 1024, budget) : Math.max(256 * 1024, Math.floor(budget / Math.max(0.02, ratio)));
+			if (ST.net.transport === "steam") rawBudget = Math.min(rawBudget, Math.floor(STEAM_PKT / Math.max(0.02, ratio)));
 			const maxN = Math.max(2, Math.min(6000, Math.floor(budget / bpc) * 8));
 			const nearN = Math.min(3000, maxN);              // what players can actually see gets the budget first
 			// Fast lane usage from the PREVIOUS batch, which is stable frame to frame. Without it we
@@ -1165,6 +1275,7 @@
 			for (const i of take) w.pending.delete(i);
 			// serializacja v4: [u16 cx][u16 cy][u8 cw][u8 ch] + per-komórka: 4 map + 1 wall + 1 shadow + 1 auth + 4 cellIds + 1 elemType = 12 B
 			const parts = [];
+			const sentIdx = [];
 			let size = 0;
 			let fogSkipped = 0;
 			// bezpiecznik natychmiastowy: po naprawdę drogiej paczce tniemy budżet surowy o połowę
@@ -1232,7 +1343,7 @@
 				for (const r of rows) { const src = (y0 + r) * W + x0; if (auth) buf.set(auth.subarray(src, src + cw), o); o += cw; }
 				for (const r of rows) { const src = (y0 + r) * W + x0; if (sim) buf.set(new Uint8Array(sim.buffer, sim.byteOffset + src * 4, cw * 4), o); o += cw * 4; }
 				for (const r of rows) { buf.set(etRows.subarray(r * cw, r * cw + cw), o); o += cw; }
-				parts.push(buf); size += buf.length;
+				parts.push(buf); size += buf.length; sentIdx.push(idx);
 			}
 			if (stoppedAt >= 0) for (let ti = stoppedAt; ti < take.length; ti++) w.pending.add(take[ti]); // 0.9.90: nie gubimy reszty
 			if (!parts.length) { w.busy = false; return; }
@@ -1260,9 +1371,9 @@
 			w.seq++; // batch number the client echoes back in wcack
 			// 0.9.78: zapamietaj chunki tej paczki — hashe wierszy sa "warunkowe" do czasu ACK klienta.
 			if (!w.unacked) w.unacked = new Map();
-			w.unacked.set(w.seq, { idx: take.slice(0), t: now });
+			w.unacked.set(w.seq, { idx: sentIdx.slice(0), t: now });
 			// q = rozmiar kolejki hosta (odliczanie postępu u klienta, 0.9.62) + sq = numer paczki (wcack, PR #8)
-			sendWorldPacket({ t: "wc", v: 5, z: w.rawMode ? 0 : 1, sq: w.seq, wid: state.store.meta && state.store.meta.worldId, scene: state.store.scene && state.store.scene.active, W, H, n: parts.length, q: w.pending.size }, packed, sameVerAll && ST.net.transport === "ws"); // binarnie tylko gdy peer ma ten sam mod i siedzimy na WS
+			sendWorldPacket({ t: "wc", v: 5, z: w.rawMode ? 0 : 1, sq: w.seq, wid: state.store.meta && state.store.meta.worldId, scene: state.store.scene && state.store.scene.active, W, H, n: parts.length, q: w.pending.size }, packed, sameVerAll && (ST.net.transport === "ws" || ST.net.transport === "steam")); // binarnie gdy ten sam mod — WS i Steam (0.9.145)
 			// EMA of what a chunk really costs on the wire, drives the batch budget above. Cheap chunks
 			// (few changed rows) earn a bigger portion, expensive ones a smaller one, so the byte ceiling
 			// holds regardless of what the sim is doing.
@@ -1312,7 +1423,11 @@
 		const q = ST._applyQ;
 		if (!q || !q.length || !state) return 0;
 		const { map, wall, shadow, auth, sim, etype, W, H } = worldBuffers(state);
-		if (!map) { q.length = 0; return 0; }
+		if (!map) {
+			for (const it of q) noteDroppedSq(it.sq);
+			q.length = 0;
+			return 0;
+		}
 		const cellIds32 = sim ? new Uint32Array(sim.buffer, sim.byteOffset, W * H) : null;
 		const tSlice = performance.now();
 		let applied = 0;
@@ -1346,7 +1461,10 @@
 			it.o = o;
 			// ACK dopiero po NALOZENIU calosci — inaczej host mierzy tempo lacza zamiast tempa klienta
 			// i rozpedza sie w nieskonczonosc (kolejka rosla do setek MB).
-			if (done) q.shift(); else break;
+			if (done) {
+				const finished = q.shift();
+				noteAppliedSq(finished && finished.sq);
+			} else break;
 		}
 		if (q.length) scheduleApplyDrain();
 		if (applied > 0 && ST.wsx) { ST.wsx.applyCount += applied; ST._lastWcT = performance.now(); }
@@ -1365,8 +1483,8 @@
 			} catch (e) { if (!ST._drainErr) { ST._drainErr = 1; log("drainApplyQ blad:", e.message); } }
 		});
 	}
-	// 0.9.111: wysylka paczki swiata. Gdy peer ma ten sam mod i siedzimy na WS — leci ramka binarna
-	// (bez base64: -25% bajtow, zero kodowania po obu stronach). Inaczej stara droga: base64 w JSON-ie.
+	// 0.9.111: wysylka paczki swiata. Gdy peer ma ten sam mod — ramka binarna (WS opcode 2 albo Steam P2P Buffer).
+	// Inaczej stara droga: base64 w JSON-ie (stary mod / mieszane wersje).
 	function sendWorldPacket(hdr, bytes, useBin) {
 		if (useBin) {
 			try {
@@ -1392,11 +1510,11 @@
 		const menuTest = false;
 		// KLIENT W MENU (fix tony: "menu główne zamienia się w czerwone bloki"): lustro hosta NIE MOŻE
 		// malować po scenie menu — dane świata lądowały w buforach sceny menu jako czerwone kafle.
-		if (myScene === 1) return;
+		if (myScene === 1) { noteDroppedSq(msg.sq); return; }
 		// ŁADOWANIE ŚWIATA W TOKU (fix TCentraL "big map freeze"): pisanie po buforach świata
 		// w TRAKCIE FH.game.load = wyścig z silnikiem wczytującym save (zwiecha/korupcja).
-		// Dropujemy — AUTO-RESYNC po starcie lustra i tak dośle pełny świat.
-		if (ST._loadingWorld) return;
+		// Dropujemy — AUTO-RESYNC po starcie lustra i tak dośle pełny świat. 0.9.145: NACK po wejściu.
+		if (ST._loadingWorld) { noteDroppedSq(msg.sq); return; }
 		if (msg.wid && myWid && msg.wid !== myWid && !menuTest) {
 			// Zaufanie: silnik nadaje wczytanemu światu INNY lokalny worldId niż host używa w "wc", mimo że to
 			// DOKŁADNIE ten sam save (fix "REJECT world" → miroir rejeté → reconcile kasował struktury klienta).
@@ -1415,6 +1533,7 @@
 				setStatus(t("other_world"), "#f66");
 				ST._hostWidSeen = msg.wid; // 0.9.116: swiat hosta, nawet gdy paczke odrzucamy — sluzy do wykrycia "siedze w zlym swiecie"
 			if (!ST.wsx.mismatchLogged) { ST.wsx.mismatchLogged = true; log("REJECT world: worldId host=" + msg.wid + " me=" + myWid + " scene h/c=" + msg.scene + "/" + myScene); }
+				noteDroppedSq(msg.sq);
 				return;
 			}
 			ST._hostWidSeen = msg.wid; // 0.9.132: swiat hosta znamy takze wtedy, gdy paczke przyjmujemy
@@ -1427,9 +1546,10 @@
 		if (!map || W !== msg.W || H !== msg.H) {
 			setStatus(t("dims_differ", W + "x" + H, msg.W + "x" + msg.H), "#f66");
 			if (!ST.wsx.mismatchLogged) { ST.wsx.mismatchLogged = true; log("REJECT world: dims host=" + msg.W + "x" + msg.H + " me=" + W + "x" + H + " map=" + (!!map)); }
+			noteDroppedSq(msg.sq);
 			return;
 		}
-		if (msg.v !== 5) { setStatus(t("ver_mismatch"), "#f66"); return; } // v5 = row-delta (maska zmienionych wierszy per chunk)
+		if (msg.v !== 5) { setStatus(t("ver_mismatch"), "#f66"); noteDroppedSq(msg.sq); return; } // v5 = row-delta (maska zmienionych wierszy per chunk)
 		if (ST.wsx.mismatchLogged) { ST.wsx.mismatchLogged = false; log("World MATCH — lustro rusza"); }
 		ST.wsx.mismatchWarned = false;
 		setClientPaused(true);
@@ -1444,6 +1564,9 @@
 		let __qb = 0; for (const it of ST._applyQ) __qb += it.raw.length;
 		if (__qb > 32 * 1024 * 1024) {
 			ST._applyQ.length = 0;
+			ST._lastAppliedSq = 0;
+			if (ST._appliedSqs) ST._appliedSqs.clear();
+			if (ST._droppedSqs) ST._droppedSqs.clear();
 			log("ZATOR: kolejka nakladania przekroczyla 32 MB — czyszcze i prosze o resync");
 			try { net.send({ t: "resync" }); } catch (e) {}
 			return;
@@ -1477,9 +1600,7 @@
 		const w = ST.wsx;
 		if (applied > 0) ST._lastWcT = performance.now();
 		if (applied > 0 && ST._stallShown) { ST._stallShown = false; setStatus(t("players", ST.peers.size + 1)); } // dane wrocily => zdejmij komunikat o zatorze // do wskaźnika zatoru (sync_stalled)
-		// Record the batch AFTER applying it, not on receipt, so the host's lag also catches a client that
-		// is CPU bound, not only a saturated link.
-		if (typeof msg.sq === "number") ST._lastAppliedSq = msg.sq;
+		// 0.9.145: watermark jest podnoszony w drainApplyQ (noteAppliedSq) dopiero po pelnym nalozeniu.
 		if (applied > 0 && !w.everApplied) {
 			w.everApplied = true; log("Pierwsze paczki świata zastosowane — lustro działa"); setStatus(t("players", ST.peers.size + 1));
 			techRepair(state, "client"); // zbrickowane flagi w save od hosta (0.9.71)
@@ -3436,6 +3557,7 @@
 			// hosta między wysyłkami!) i wczytywał ZEPSUTY świat. Teraz klient przyjmuje tylko paczki
 			// bieżącego tid, a host nie zaczyna nowego transferu póki trwa poprzedni (guard wyżej).
 			ST._wtxSeq = (ST._wtxSeq || 0) + 1;
+			if (ST._wtxHold) { clearTimeout(ST._wtxHold); ST._wtxHold = null; }
 			ST._wtx = { tid: ST._wtxSeq, name: save.name || save.id, parts, total, queue: [], sent: 0, sizeKB: Math.round(bytes.length / 1024) };
 			for (let i = 0; i < total; i++) ST._wtx.queue.push(i);
 			net.send({ t: "world-begin", tid: ST._wtx.tid, name: ST._wtx.name, size: bytes.length, chunks: total });
@@ -3459,7 +3581,19 @@
 				w.sent++; n++;
 			}
 			if (w.queue.length) { ST._wtxTimer = setTimeout(step, 25); } // ~160 paczek/s = ~7.5 MB/s
-			else { net.send({ t: "world-end", tid: w.tid }); ST._wtxTimer = null; }
+			else {
+				net.send({ t: "world-end", tid: w.tid });
+				ST._wtxTimer = null;
+				// 0.9.145: keep parts ~20 s so world-need can resend missing indices without a full restart
+				if (ST._wtxHold) clearTimeout(ST._wtxHold);
+				ST._wtxHold = setTimeout(() => {
+					ST._wtxHold = null;
+					if (ST._wtx && ST._wtx.tid === w.tid && (!ST._wtx.queue || !ST._wtx.queue.length)) {
+						log("save transfer tid " + w.tid + " — okno wznawiania zamkniete");
+						ST._wtx = null;
+					}
+				}, 20000);
+			}
 		};
 		ST._wtxTimer = setTimeout(step, 0);
 	}
@@ -4512,9 +4646,18 @@
 			// throttles itself. Cheap (~20 B) and sent unordered, so it never queues behind world packets.
 			// A slower ack (2 Hz say) would add ~5 batches of its own age to the measurement and the
 			// controller would throttle a perfectly healthy link.
-			if (ST._lastAppliedSq != null && now - (ST._lastAckT || 0) > 100) {
-				ST._lastAckT = now;
-				try { net.send({ t: "wcack", sq: ST._lastAppliedSq, qd: (ST._applyQ || []).length }); } catch (e) {} // qd = ile paczek czeka u mnie na nalozenie
+			if (now - (ST._lastAckT || 0) > 100) {
+				try {
+					const gaps = collectAckGaps();
+					const wm = ST._lastAppliedSq || 0;
+					if (wm > 0 || gaps.length) {
+						ST._lastAckT = now;
+						const ack = { t: "wcack", qd: (ST._applyQ || []).length, wm: 1 };
+						if (wm > 0) ack.sq = wm;
+						if (gaps.length) ack.gaps = gaps;
+						net.send(ack);
+					}
+				} catch (e) {}
 			}
 			sendMyProjectilesIfDue(state);
 			sendResourceDeltaIfDue(state); // wyślij hostowi przyrosty zasobów klienta (dotNine)

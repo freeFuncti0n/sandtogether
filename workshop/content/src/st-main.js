@@ -199,8 +199,12 @@ function ensureP2pPoll() {
         const pkt = n.readP2PPacket(size);
         if (!pkt) break;
         const sid = String(pkt.steamId && (pkt.steamId.steamId64 !== undefined ? pkt.steamId.steamId64 : pkt.steamId));
-        const text = pkt.data.toString('utf8');
-        handleIncoming('steam:' + sid, text, sid);
+        const raw = pkt.data;
+        const buf = Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
+        // 0.9.145: ta sama ramka binarna co WS — [u16 hdrLen][json][bytes]. JSON zaczyna sie od '{',
+        // wiec dwa pierwsze bajty UTF-8 nigdy nie wygladaja jak krotki hdrLen.
+        if (looksLikeBinFrame(buf)) handleIncomingBin('steam:' + sid, buf);
+        else handleIncoming('steam:' + sid, buf.toString('utf8'), sid);
       }
     } catch (e) { /* nie zabijaj pętli */ }
   }, 15);
@@ -370,20 +374,33 @@ function handleIncomingBin(peerId, buf) {
     sendRenderer("st:msg", { from: peerId, msg: obj, bin: buf.subarray(2 + hl) });
   } catch (e) { log("bin frame blad:", e.message); }
 }
+function looksLikeBinFrame(buf) {
+  if (!buf || buf.length < 4) return false;
+  const hl = buf.readUInt16BE(0);
+  if (hl < 2 || hl > 8192) return false;
+  if (buf.length < 2 + hl) return false;
+  return buf[2] === 0x7b; // '{' — naglowek JSON
+}
 function sendToPeer(peer, obj) {
   const isBin = Buffer.isBuffer(obj) || obj instanceof Uint8Array;
-  const text = isBin ? null : JSON.stringify(obj);
   try {
-    if (peer.kind === 'ws') peer.sock.write(wsEncodeFrame(isBin ? obj : text, S.role === 'client'));
+    if (peer.kind === 'ws') peer.sock.write(wsEncodeFrame(isBin ? obj : JSON.stringify(obj), S.role === 'client'));
     else if (peer.kind === 'steam') {
       // ping, pong and wcack MUST bypass the reliable channel. Steam's reliable channel is ORDERED, so
       // neither can overtake a backlog of world packets: the HUD would report send queue depth instead of
       // RTT, and the mirror ack would feed the congestion controller state from tens of seconds ago,
       // which defeats the whole point of measuring. Losing one is harmless, ping goes out every 1 s and
       // wcack 10x per second, and both carry absolute state rather than a delta.
-      if (isBin) return; // binarne tylko po WS (LAN/direct); Steam trzyma sciezke tekstowa
-      const reliable = obj.t !== 'pos' && obj.t !== 'ping' && obj.t !== 'pong' && obj.t !== 'wcack';
-      S.steam.networking.sendP2PPacket(BigInt(peer.steamId64), reliable ? S.steam.networking.SendType.Reliable : S.steam.networking.SendType.UnreliableNoDelay, Buffer.from(text, 'utf8'));
+      let payload;
+      if (isBin) payload = Buffer.isBuffer(obj) ? obj : Buffer.from(obj.buffer, obj.byteOffset, obj.byteLength);
+      else payload = Buffer.from(JSON.stringify(obj), 'utf8');
+      const reliable = isBin || (obj.t !== 'pos' && obj.t !== 'ping' && obj.t !== 'pong' && obj.t !== 'wcack');
+      const ok = S.steam.networking.sendP2PPacket(BigInt(peer.steamId64), reliable ? S.steam.networking.SendType.Reliable : S.steam.networking.SendType.UnreliableNoDelay, payload);
+      if (ok === false) {
+        S._steamFailN = (S._steamFailN || 0) + 1;
+        if (S._steamFailN <= 8 || S._steamFailN % 40 === 0) log('sendP2PPacket false (bufor pelny?) n=' + S._steamFailN + ' do', peer.id, 'bajtow', payload.length);
+        emitEvent('steam-congested', { n: S._steamFailN, bytes: payload.length });
+      }
     }
   } catch (e) { log('send error to', peer.id, e.message); }
 }
