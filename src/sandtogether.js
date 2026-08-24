@@ -86,6 +86,8 @@
 			hybrid_direct: "Direct link on — Steam is only used for invites",
 			hybrid_steam_fb: "Direct unreachable — staying on Steam P2P",
 			hybrid_trying: "Trying a direct connection…",
+			peer_kind_ws: "Direct",
+			peer_kind_steam: "Steam",
 			btn_host_direct: "Host (Internet — direct)",
 			lb_host_direct_d: "Full speed, no Steam relay. Opens the port on your router automatically (UPnP).",
 			direct_ready: "DIRECT hosting — give your friend the address below",
@@ -154,6 +156,8 @@
 			hybrid_direct: "Direct działa — Steam tylko do zaproszeń",
 			hybrid_steam_fb: "Direct niedostępny — zostaję na Steam P2P",
 			hybrid_trying: "Próbuję połączenia bezpośredniego…",
+			peer_kind_ws: "Direct",
+			peer_kind_steam: "Steam",
 			btn_host_direct: "Host (internet — bezpośrednio)",
 			lb_host_direct_d: "Pełna prędkość, bez relaya Steama. Sam otwiera port na routerze (UPnP).",
 			direct_ready: "Hostujesz BEZPOŚREDNIO — podaj koledze adres poniżej",
@@ -221,6 +225,8 @@
 			hybrid_direct: "直连已开启 — Steam仅用于邀请",
 			hybrid_steam_fb: "直连不可达 — 继续使用Steam P2P",
 			hybrid_trying: "正在尝试直连…",
+			peer_kind_ws: "直连",
+			peer_kind_steam: "Steam",
 			btn_host_direct: "创建房间(互联网 — 直连)",
 			lb_host_direct_d: "全速直连,不经过Steam中继。自动在路由器上开放端口(UPnP)。",
 			direct_ready: "直连主机模式 — 把下面的地址发给朋友",
@@ -562,7 +568,7 @@
 			} else if (ev.kind === "upgrading") { setStatus(t("hybrid_trying"), "#fd5");
 			} else if (ev.kind === "upgraded") {
 				ST.net.transport = ev.transport;
-				if (ev.id && ST.peers.has(ev.id)) ST.peers.get(ev.id).kind = ev.transport;
+				for (const p of ST.peers.values()) p.kind = ev.transport === "ws" ? "ws" : "steam";
 				if (ev.transport === "ws") {
 					ST._directMode = !isLocalAddr(ev.host);
 					setStatus(t("hybrid_direct"), "#5f5");
@@ -575,6 +581,10 @@
 			} else if (ev.kind === "peer-upgraded") {
 				const p = ST.peers.get(ev.id);
 				if (p) p.kind = ev.transport;
+				if (ST.net.role === "host" && ST.peers.size) {
+					if (!anySteamPeer()) setStatus(t("hybrid_direct"), "#5f5");
+					else if (ev.transport === "steam") setStatus(t("hybrid_steam_fb"), "#fd5");
+				}
 				log("HYBRID: peer", ev.id, "teraz", ev.transport);
 			} else if (ev.kind === "upgrade-failed") {
 				setStatus(t("hybrid_steam_fb"), "#fd5");
@@ -1238,9 +1248,8 @@
 			const STEAM_PKT = 48 * 1024;
 			let HARD_CAP = Math.floor((150 * 1000 * 1000) / 8 / 10);
 			// 0.9.146: 48 KB tylko gdy KTOS jeszcze siedzi na Steam P2P. Po hybrid-upgrade wszystkich — pelny WS.
-			let anySteamPeer = !ST.peers.size && ST.net.transport === "steam";
-			for (const pp of ST.peers.values()) if (pp.kind !== "ws") anySteamPeer = true;
-			if (anySteamPeer) HARD_CAP = Math.min(HARD_CAP, STEAM_PKT);
+			const anySteam = anySteamPeer();
+			if (anySteam) HARD_CAP = Math.min(HARD_CAP, STEAM_PKT);
 			// budzet PROPORCJONALNY do cyklu: przy 8 ms paczki sa male, przy 100 ms duze — pasmo/s stale
 			// 0.9.145: applyBrake NIE od najwolniejszego peera. minAck/lag zostaje globalny (inaczej dziury
 			// u wolnego), ale kolejka nakladania VPN-klienta nie moze dlawic Direct-klienta do 25 %.
@@ -1275,7 +1284,7 @@
 			}
 			// bez kompresji bajty wyjściowe = bajty zserializowane, więc NIE dzielimy przez współczynnik
 			let rawBudget = willSendRaw ? Math.max(256 * 1024, budget) : Math.max(256 * 1024, Math.floor(budget / Math.max(0.02, ratio)));
-			if (anySteamPeer) rawBudget = Math.min(rawBudget, Math.floor(STEAM_PKT / Math.max(0.02, ratio)));
+			if (anySteam) rawBudget = Math.min(rawBudget, Math.floor(STEAM_PKT / Math.max(0.02, ratio)));
 			const maxN = Math.max(2, Math.min(6000, Math.floor(budget / bpc) * 8));
 			const nearN = Math.min(3000, maxN);              // what players can actually see gets the budget first
 			// Fast lane usage from the PREVIOUS batch, which is stable frame to frame. Without it we
@@ -3356,6 +3365,19 @@
 			|| (o1 === 192 && o2 === 168) || (o1 === 172 && o2 >= 16 && o2 <= 31)
 			|| (o1 === 169 && o2 === 254) || (o1 === 100 && o2 >= 64 && o2 <= 127);
 	}
+	function anySteamPeer() {
+		if (!ST.peers.size) return ST.net.transport === "steam";
+		for (const p of ST.peers.values()) if (p.kind !== "ws") return true;
+		return false;
+	}
+	function sessionTrName() {
+		if (ST.net.transport === "ws") return ST._directMode ? "Internet" : "LAN";
+		if (ST.net.transport === "steam") {
+			if (ST.peers.size && !anySteamPeer()) return "Direct";
+			return "Steam";
+		}
+		return ST.net.transport || "";
+	}
 
 	function updatePingDisplay() {
 		if (!ST._hud) return;
@@ -3368,8 +3390,7 @@
 		// Relay Valve: gdy obieg pakietu liczy sie w SEKUNDACH, to nie jest "slabe lacze" tylko dlawiony relay —
 		// akcje gracza stoja w tej samej kolejce co transfer swiata, wiec nic sie nie dzieje w swiecie.
 		try {
-			let onSteam = !ST.peers.size && ST.net.transport === "steam";
-			for (const p of ST.peers.values()) if (p.kind !== "ws") onSteam = true;
+			let onSteam = anySteamPeer();
 			if (onSteam && ST.net.role !== "idle") {
 				let worst = 0;
 				for (const p of ST.peers.values()) if (p.ping != null && p.ping > worst) worst = p.ping;
@@ -3641,7 +3662,7 @@
 		const hud = document.getElementById("st-hud"); if (!hud) return;
 		const q = (id) => hud.querySelector(id);
 		const role = ST.net.role;
-		const trName = ST.net.transport === "steam" ? "Steam" : (ST._directMode ? "Internet" : "LAN");
+		const trName = sessionTrName();
 		const badge = q("#st-badge");
 		const roleColor = role === "host" ? "#5f5" : role === "client" ? "#6cf" : "#f66";
 		if (badge) {
@@ -3678,7 +3699,8 @@
 				mk("#5f5", ST._myNick || "Player", "(" + t("lb_you") + (role === "host" ? " · host)" : ")"));
 				for (const [, pr] of ST.peers) {
 					const ok = !pr.modVer || pr.modVer === VER;
-					mk(ok ? "#5f5" : "#f66", pr.nick || "?", ok ? "" : pr.modVer);
+					const via = pr.kind === "ws" ? t("peer_kind_ws") : (pr.kind === "steam" ? t("peer_kind_steam") : "");
+					mk(ok ? "#5f5" : "#f66", pr.nick || "?", (via ? via : "") + (ok ? "" : " " + (pr.modVer || "")));
 				}
 			}
 		}
@@ -3943,7 +3965,7 @@
 			} else {
 				// LOBBY: badge roli + status + lobby id + zaproś + lista graczy + świat + rozłącz
 				const badge = document.createElement("div");
-				const trName = ST.net.transport === "steam" ? "Steam" : (ST._directMode ? "Internet" : "LAN");
+				const trName = sessionTrName();
 				badge.style.cssText = "font-weight:800;font-size:15px;margin:2px 0 4px;color:" + (ST.net.role === "host" ? "#5f5" : "#6cf");
 				badge.textContent = ST.net.role === "host" ? t("badge_host", trName) : t("badge_client", trName);
 				p.appendChild(badge);
@@ -4073,7 +4095,10 @@
 					return r;
 				};
 				pl2.appendChild(mk(ST._myNick || "Player", "(" + t("lb_you") + ") " + VER, true));
-				for (const [, pr] of ST.peers) pl2.appendChild(mk(pr.nick || "?", pr.modVer || "?", !pr.modVer || pr.modVer === VER));
+				for (const [, pr] of ST.peers) {
+					const via = pr.kind === "ws" ? t("peer_kind_ws") : (pr.kind === "steam" ? t("peer_kind_steam") : "");
+					pl2.appendChild(mk(pr.nick || "?", (via ? via + " · " : "") + (pr.modVer || "?"), !pr.modVer || pr.modVer === VER));
+				}
 			}
 		}
 	}

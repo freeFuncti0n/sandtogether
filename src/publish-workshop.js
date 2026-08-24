@@ -36,8 +36,8 @@ From then on the mod updates itself at every launch, so both players always matc
 [h2]How to play[/h2]
 Main menu → [b]Multiplayer[/b] → pick how you want to connect:
 [list]
-[*] [b]Host (Internet — direct)[/b] — recommended. The mod opens the port on your router by itself (UPnP) and shows your address [b]masked[/b], with show/hide and a copy button that never puts it on screen — safe to stream. Your friend pastes that address into [b]Join by address[/b] (the same button also covers LAN and VPN). This is the fastest route: it does NOT go through Steam relay servers, which throttle bandwidth and add latency.
-[*] [b]Host (Steam)[/b] + [b]Invite[/b] — zero setup, invite straight from your Steam friend list.
+[*] [b]Host (Internet — direct)[/b] — The mod opens the port on your router by itself (UPnP) and shows your address [b]masked[/b], with show/hide and a copy button that never puts it on screen — safe to stream. Your friend pastes that address into [b]Join by address[/b] (the same button also covers LAN and VPN). This is the fastest route: it does NOT go through Steam relay servers, which throttle bandwidth and add latency.
+[*] [b]Host (Steam)[/b] + [b]Invite[/b] — zero setup; Direct is used automatically when the port opens, else Steam P2P.
 [*] [b]Host LAN[/b] / [b]Join by address[/b] — same network, or a VPN mesh like Tailscale. One warning: from inside your own network you cannot reach your own public address — most routers refuse it — so when you are both on the same network, use the local 192.168.x.x address.
 [*] [b]Join by Lobby ID[/b] — paste an ID from the clipboard.
 [/list]

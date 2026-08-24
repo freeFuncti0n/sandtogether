@@ -42,6 +42,10 @@ const S = {
   p2pPoll: null,
   myNick: 'Player',
   myId: 'local',
+  sessionTok: null,     // 0.9.146: hybrid Direct-WS gate (16-byte hex)
+  directInfo: null,     // { lan, ip, port, tok?, upnp? } — never put in Rich Presence
+  _wsUpgraded: false,
+  _upgradeBusy: false,
 };
 
 function sendRenderer(channel, payload) {
@@ -103,7 +107,7 @@ function wsFrameParser(sock, onText, onBinary) {
   };
 }
 
-function wsNeedAuth() { return !!(S.sessionTok && S.transport === 'steam'); }
+function wsNeedAuth() { return !!S.sessionTok; }
 
 function attachAuthedWs(pending, sock, sidStr) {
   const sid = sidStr ? String(sidStr) : '';
@@ -115,7 +119,7 @@ function attachAuthedWs(pending, sock, sidStr) {
     sock._stPeerId = existing.id;
     emitEvent('peer-upgraded', { id: existing.id, transport: 'ws' });
     log('HYBRID: peer', existing.id, 'przeszedl na Direct WS');
-    sendToPeer(existing, { t: 'hello', nick: S.myNick, ver: PROTO_VER });
+    // no second hello — Steam already exchanged it; another hello would re-queue the full world
     return existing;
   }
   const peer = { id: pending.id, kind: 'ws', sock, nick: '?', steamId64: sid || undefined };
@@ -173,13 +177,22 @@ function startWsServer(port, opts) {
             try { sock.end(); } catch (e) {}
             return;
           }
+          const sid = obj.sid != null ? String(obj.sid) : '';
+          if (!sid || !S.peers.get('steam:' + sid)) {
+            log('HYBRID: WS auth bez znanego steam peer — odrzucam (anti-ghost)', sid || '?');
+            try { sock.end(); } catch (e) {}
+            return;
+          }
           pending.pendingAuth = false;
           if (pending.authTimer) { clearTimeout(pending.authTimer); pending.authTimer = null; }
-          attachAuthedWs(pending, sock, obj.sid);
+          attachAuthedWs(pending, sock, sid);
           return;
         }
         handleIncoming(sock._stPeerId || pending.id, text);
-      }, (bin) => handleIncomingBin(sock._stPeerId || pending.id, bin));
+      }, (bin) => {
+        if (pending.pendingAuth) return;
+        handleIncomingBin(sock._stPeerId || pending.id, bin);
+      });
       sock.on('data', feed);
       const rest = headerBuf.subarray(idx + 4);
       if (rest.length) feed(rest);
@@ -322,11 +335,17 @@ function joinWsKeepSteam(host, port, tok, cb) {
   });
 }
 
-function tryUpgradeWs(info) {
-  if (!info || S._upgradeBusy || S._wsUpgraded) return;
+function hybridWsCandidates(info) {
   const cands = [];
+  if (!info) return cands;
   if (info.lan) cands.push(info.lan);
   if (info.ip && info.ip !== info.lan) cands.push(info.ip);
+  return cands;
+}
+
+function tryUpgradeWs(info) {
+  if (!info || S._upgradeBusy || S._wsUpgraded) return;
+  const cands = hybridWsCandidates(info);
   if (!cands.length) {
     log('HYBRID: brak adresu Direct — zostaje Steam P2P');
     emitEvent('upgrade-failed', {});
