@@ -51,16 +51,20 @@ Polska instrukcja: zobacz `INSTRUKCJA.md`.
 launch from your Workshop subscription (the game restarts once when it does).
 You never run the installer again, and both players always match versions.
 
-## How to play (over the internet, via Steam — no network setup)
+## How to play (over the internet, via Steam — no address to share)
 
 **Host:**
 1. Panel → **Host (Steam)** → **Invite** (pick your friend).
 2. Load/start a game — the world is sent to the joiner automatically.
+   Direct is used by itself when TCP 27777 is reachable (same LAN or UPnP);
+   otherwise the session stays on Steam P2P. You do not share an IP.
 
 **Joining player:**
 1. Accept the Steam invite (works with the game open or closed).
 2. After "World imported!": **Load Game** → load the received world.
-3. You now share one live world (the panel shows "host mirror").
+3. You now share one live world (the panel shows "host mirror"). The panel
+   says **Direct** when the upgrade succeeded, or stays on **Steam** if the
+   port could not be reached.
 
 **LAN:** Host LAN / Join LAN (type `ip` or `ip:port`, default 27777).
 **Chat:** type in the panel's message box, press Enter.
