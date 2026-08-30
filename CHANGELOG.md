@@ -1,17 +1,316 @@
+## 0.9.163-beta
+
+**Steam invite now tries a direct connection automatically** (ported onto 0.9.162). Host (Steam) still creates the Friends-only lobby and overlay invite — nothing new to share — but the host also opens TCP 27777 (UPnP when the router allows it) and, after the Steam hello, tells the joining friend the LAN and public address over P2P. The client tries LAN first (avoids hairpin NAT), then the public IP, with a session token so a random scanner cannot join the open port. If Direct comes up, the world stream moves to WebSocket (full bandwidth, binary frames); Steam stays for invites and as fallback when Direct drops or CGNAT blocks it. Old mods ignore the upgrade message and keep using Steam P2P.
+
+**World holes over the internet — contiguous ACK watermark.** The client used to acknowledge the *latest* world batch it had seen, so a lost packet in the middle counted as delivered. The ack is now a contiguous watermark: batch 52 without 51 keeps the ack at 50, the hole is NACKed immediately, and those chunks are resent from the *current* state. Steam P2P sends the same binary world frames as WebSocket, live batches cap at ~48 KB while anyone is still on Steam, and a slow VPN peer no longer drops everyone else's budget to 25 %. A `world-need` for an old transfer id is ignored instead of restarting the whole save.
+
+Also includes everything from 0.9.162 (installer FH-alias adaptation) back through 0.9.145 (TCP_NODELAY on Direct/LAN).
+
+## 0.9.162-beta
+
+**The re-minified-build fix (0.9.160) now covers the public installer too.** The alias adaptation
+shipped in 0.9.160 lived only in the dev patcher (`src/patch.js`); the installer players actually
+run (`install.bat` -> `install.ps1`) still tried every anchor literally, so a re-minified bundle
+(FH module aliased e.g. `se` instead of `ie` - cayden.sieteski's case) kept failing with a false
+"This game version is NOT supported". The PowerShell installer now detects the FH alias from the
+bundle itself (regex on the `frame:update` emit) and, when a literal anchor misses, retries it with
+`ie.FH` rewritten to the detected alias. The critical-failure message also names the detected alias
+now, which makes future "NOT supported" reports diagnosable at a glance. Verified on a simulated
+re-minified bundle (all 29 hooks apply, zero critical misses); PowerShell 5.1 syntax parser-checked.
+Mod runtime is unchanged from 0.9.161.
+
+## 0.9.161-beta
+
+**Full line-by-line audit of the mod (5455+740+196 lines) against the official Sandkit docs** - five
+real defects found and fixed:
+
+- **The frame hook wears armor now.** Our per-frame code runs inside the game's frame:update emit;
+  an uncaught exception there propagates into the game's promise-chained frame loop and kills it
+  PERMANENTLY - static screen while the mirror keeps applying in the background (observed live:
+  frame:update dead for 130+ s). Every error is now caught, logged with a stack (first 10) and
+  swallowed. A renderer-wide error/rejection recorder also writes uncaught errors to the log and
+  keeps the last rejection in memory - the next freeze anyone hits will name its culprit in seconds
+  (it already convicted one: a malformed test item injected during our own session, not mod code).
+- **Joining clients get the host's teleport zones and unlocked-item list.** Both were sent only on
+  change, and the one send after world load raced the client's mirror start and was dropped - a
+  fresh client kept its locally generated zones forever (measured: 360 zones vs the host's 351).
+  Signatures now reset on peer join and the zones re-send every 30 s; verified converged 351=351.
+- **A mangled IP regex** (invisible backspace characters where \b should be - a heredoc scar) made
+  the "use the host's local address" hint dead code since 0.9.133. Restored.
+- **A session-reset statement swallowed by a comment** (glued onto its tail) left stale
+  unacknowledged-batch records across host sessions; after 20 s they counted as "lost" and dirtied
+  the fresh session's queue. Restored.
+- **Shake residue now goes through the when-idle queue** like lava/ice - a bare mid-frame createAt
+  could lose the race against the simulation worker (the exact bug class fixed for cryo in 0.9.150).
+
+## 0.9.160-beta
+
+**The installer survives Steam's re-minified builds (report: cayden.sieteski).** Steam can serve
+differently-minified bundles under the same game version number - the reporter's 0.5.5 build had the
+FH module aliased as `se` where ours says `ie`, so every literal patch anchor missed and the
+installer aborted with a misleading "version not supported" error even though the build was fine.
+The patcher now detects the FH alias straight from the bundle (via the frame:update emit signature)
+and, when a literal anchor misses, retries it with the alias rewritten. Verified on a simulated
+re-minified bundle: all hooks apply, including the critical frame hook. On builds where deeper
+minified names also changed, non-critical hooks may still skip with a warning (the mod boots and the
+core sync works) - send us your unpatched bundle.js and we'll port the rest properly.
+
+## 0.9.159-beta
+
+**The Corraller finally works the same on the client as on the host.** A long chain of client-side
+defects fell in one sustained session with the author testing live:
+
+- **Critter duplication is gone.** Every capture was counted twice: the client's local capture tick
+  finalized the catch (bucket +1) and forwarded a legacy "collect" to the host, which counted it
+  again next to its own authoritative finalize from the forwarded capture. The client no longer
+  finalizes captures at all (host-only; a bundle gate skips the local finalize), and the host ignores
+  collects for critters being corralled. Conservation verified live: map + bucket stays constant to
+  the single critter across mass release/capture cycles.
+- **The screen no longer brightens permanently.** Critter lights are eternal (durationMs -1) and are
+  keyed to the critter OBJECT; the entity sync replaced objects wholesale every ~5 s, orphaning the
+  real light and letting removal extinguish someone else's index. Entity sync now preserves object
+  identity (fields merged in place, host light indexes stripped). Measured: 8 released shinelets peak
+  ~92 active lights (their natural glow), back to exactly 0 after recapture, both sides.
+- **Releases show the muzzle launch.** The real critter used to appear only after the host round
+  trip (~200 ms), so the client saw no launch animation. The client now spawns an instant visual
+  echo with full local physics (flies, bounces off walls) and hands over to the host-authoritative
+  critter within 600 ms.
+- **Flying critters bounce on the client.** Host velocities ride the 10 Hz entity lane and in-flight
+  critters are integrated by local physics (position corrected only on >48 px drift), so arcs and
+  wall bounces render exactly like the host's.
+- **Capture completion has effects on the client** - collect sound, flash and particles (previously
+  critters silently vanished).
+- **The bucket counter updates live** - counters are merged in place and the hotbar overlay is
+  refreshed through the same overlays.update("hotbar") call vanilla uses. Verified on screen:
+  the displayed count tracked host-side changes 1:1 in the author's window.
+- **No more stuck critter sprites.** A janitor sweeps the entity sprite registry every entity packet
+  and destroys any sprite whose critter is gone (en/st race could orphan one).
+- **entCap flood fixed.** The capture cone skips critters already being captured (the capturing flag
+  is honored again) plus a 1 s per-id resend guard - one capture request per critter instead of 60/s.
+
+**Filters no longer reset for the host (report: MaxMasterB).** The client's machine-config scan
+attached its possibly stale filter to every data change, silently reverting the host's newer filter
+config; the filter now rides along only when the filter itself changed.
+
+**Structure-specific filters survive client placement (report: darkalien - "planter boxes block
+gold").** Every client placement carried the placer's global default filter and the host applied it
+to everything - including the Planter Box, whose game-assigned pass filter (gold/seeds) got replaced
+by the generic sand+water default. The override now applies only when the built filter derives from
+the host's default filter; structure-specific filters are preserved.
+
+**Upgrade orb no longer locks the other player (report: MaxMasterB).** pendingChoice/viewMode are
+per-player UI flags living in the shared augments object: the host stream kept re-arming the input
+lock on the player who had already closed the popup, and the first player's choice could wipe the
+other's open popup and freshly picked nodes. The client now accepts pendingChoice only on a
+false-to-true edge (a new orb), and the host merges choices (nodes united, levels maxed) instead of
+assigning the whole object.
+
+**Story steps unlock live for the client (report: darkalien - teleporter/anomaly needed a restart).**
+Story progression arrived silently in the state stream, so the client never ran step handlers
+(rewards, teleport waypoints like the anomaly's Void destination). New steps from the team are now
+emitted locally as story:stepCompleted, mirroring what the tech sync has done since 0.9.89.
+
+Also shipped (0.9.158 work): volcanizer, caulk blaster and flamethrower create elements through the
+when-idle queue with proper velocity/duration like vanilla, and the apply pump acknowledges from both
+the frame hook and the drain pump.
+
+## 0.9.157-beta
+
+**Hotfix for 0.9.156: the full-tank blow-away could delete material.** The blow step removed the
+element through the deferred (when-idle-preferring) removal alias, so inside the idle callback the
+removal was queued for later while the velocity re-create ran immediately against a still-occupied
+cell and silently failed - the late removal then erased the element. Exactly the "everything vanishes
+into the ether" the author hit within minutes of hands-on testing on a level-6 world. Removal and
+re-create are now synchronous within the single when-idle callback (cell freed, create succeeds).
+Verified with an honest measurement this time - a fixed wide region counted before and after, with
+type conversions included (sand landing in water becomes wet sand): 20 cells before, 22 sand + 6 wet
+sand after across the settle radius - zero net loss. Also recorded: the flawed measurement that let
+the 0.9.156 bug through used different scan regions before and after; the test recipe now mandates a
+fixed region plus conversion counting.
+
+## 0.9.156-beta
+
+**The background-window freeze is gone.** The client's apply pump was scheduled exclusively with
+requestAnimationFrame, which Chromium throttles for occluded windows (even with the anti-throttling
+flags) - a client window behind another window stopped applying world packets, the host detected the
+stall and paused sending, and the whole session read as frozen. Caught live three times by the new
+log monitor, including during the author's own play session. The pump now schedules both a frame
+callback and a 150 ms watchdog timeout - whichever fires first runs the drain and cancels the other.
+Background timers are throttled to ~1 Hz, which is ample for the 10 ms drain budget; a visible window
+still runs at full frame rate. Verified e2e: two minutes of continuous world churn with the client
+window fully covered - applyCount 104 -> 1453, zero congestion stalls (previously stalled within 30 s).
+
+**Full tanks blow particles away, like vanilla.** With no room in the tanks the host used to leave
+sucked material in place silently - to the player the vacuum "did nothing". The game has always
+passed the mod a blow vector (fourth argument of the intake hook - ignored until now); it now rides
+in the intake request and the host re-creates non-fitting elements with that velocity through the
+when-idle queue, so they visibly fly away from the nozzle. Nothing is deleted: verified e2e with
+three full tanks - world sand count unchanged after suction, tanks untouched.
+
+## 0.9.155-beta
+
+**Host frame spikes: 80 ms -> 34 ms (profiler-guided).** The per-subsystem frame profiler
+added in 0.9.154 named two culprits on a big factory with players inside it. The mirror batch builder
+had a byte budget but no time budget: hashing hundreds of constantly-dirty belt chunks produces zero
+output bytes when rows are unchanged, so the byte valve never fired and single frames burned up to
+80 ms in row hashing - the loop now hard-stops after 10 ms and returns the remainder to the queue
+(the existing stoppedAt mechanism). And the resources sync serialized and IPC-cloned the entire
+upgrades tree, tech flags, progression, story state and building list every second, changed or not -
+those heavy sections now ship every 5 s and only when their JSON actually differs (cached compare;
+the scalar lane - resources, gold, energy, belt animation, factory process counters - stays at 1 s,
+and a newly joined peer forces a fresh heavy send). Client-side handlers already guard every field,
+so omitted sections are backward-safe.
+
+## 0.9.154-beta
+
+**Sliced structure snapshots - the ~140 ms hitch is gone.** Whenever the set of structures changed
+(anyone building or demolishing), the host serialized the whole structure list in a single frame and
+the client parsed and applied it in a single frame - measured at ~140 ms on an 84,228-structure world,
+recurring every 2.5 s during active building. The snapshot now travels as parts of 4,000 structures:
+the host serializes exactly one part per frame (the view may tear across parts - harmless, since ghost
+reconciliation requires three consecutive absences plus a 30 s fresh-build shield), parts arrive and
+apply independently in any order, and the ghost reconcile walks the local list with a 4 ms per-frame
+cursor once all parts of a snapshot landed (0.9.150/153 caps kept: max 50 removals, full stop above a
+2,000-structure divergence). Measured after: worst client hitch 19 ms, average 10 ms per part.
+
+**Permanent frame profiler.** A MOD-FRAME log line (at most one per 10 s, only when frames exceeded
+25 ms) reports the spike count, the host sync block's worst cost, snapshot serialization time and the
+client's snapshot apply time - so "it stutters" reports now arrive with the culprit named. First
+finding already on record: the host sync block peaked at 43 ms on the big world - that is the next
+target.
+
+## 0.9.153-beta
+
+**Big-factory mirror bandwidth cut ~10x (Sessional).** Items moving on conveyors dirty their
+cells every tick, so a belt-heavy chunk re-entered the send queue ~10x/s forever - pure cosmetic
+churn no player was looking at. Measured on an 84,228-structure factory world with both players away
+from the base: 5136 KB/s and 1249 chunks/s of mirror traffic. Distant chunks now carry a per-chunk
+cooldown of 600 ms (~1.6 refreshes/s); chunks within ~2 screens of any player keep the full rate, and
+a one-off distant change (a placed building, a dug tunnel) still ships immediately - its chunk has no
+recent send to wait out. Same scenario after: 523 KB/s, 88 chunks/s. Near-player traffic verified
+unthrottled (1098 chunks/s with both players inside the belt city). Nothing is skipped, only
+rescheduled - the chunk stays queued until its clock allows it. Pattern borrowed from Factorio's
+FFF#421 optimization notes: lower the update rate where nobody is watching.
+
+## 0.9.152-beta
+
+**The frozen-world-on-join case that survived 0.9.150 (Quadbro).** The joining player saw a static
+world while the host received their every action. Loading the transferred world reloads the joining
+player's game, which wipes the mod's in-memory trust state - and importing a world the player already
+had a copy of assigns it a NEW local world id, so every mirror packet failed the world-id check forever
+after; the one-shot rescue reload imported yet another new id and hit the same wall. The 0.9.150 world
+session token (which survives the reload) now rides in every mirror packet: a client that loaded exactly
+the host's transfer is trusted regardless of local world ids. The host also stops re-sending the world
+on every handshake when the token already matches - a new local id after import is normal, not a reason
+to transfer again. Verified by forcing a foreign world id and a wiped trust state on a live client: the
+mirror kept applying.
+
+## 0.9.151-beta
+
+**Client-placed filters now behave like what they display (darkalien, GitHub issue #18).** Two stacked
+bugs on top of the 0.9.146/147 fix. The override gate keyed on the structure config's tooltip marker,
+which is not reliable across the numeric vanilla types - so ordinary placements could skip the override
+entirely and only copy-paste ever carried the client's config. And even when the override applied, it
+patched only the store copy: the simulation workers - where filtering actually happens - kept the filter
+the game had stamped at build time from the host's own selection. Hence the reported symptom: the filter
+shows the client's config on both screens but behaves like whatever the host last placed. The override
+now applies to every filter-bearing structure except the fixed-filter ones (gloom emitter and critter
+fence, recognized by config name and by the density key only their filters carry), and after the
+override the structure is re-propagated to the simulation workers exactly like the edit path has done
+since 0.9.142. Verified on two instances: host config residue, client placed a gold filter - the built
+structure carries gold on the host, in the mirror, and in the workers.
+
+## 0.9.150-beta
+
+**The joining player always gets the world the host is actually playing.** Two root causes fixed. First,
+the world transfer exported the *newest save file on disk*, not the world the host had loaded - a host on
+an older save (or a different world) sent something else entirely. The host now saves its live world to a
+temporary file and sends exactly that, falling back to the newest save of the current world's id, and
+cleans the temporary file up afterwards. Second, the join handshake compared only the world id, so a
+returning player with a *stale copy of the same world* was waved through with no save at all - the mirror
+and the ghost-reconciler then spent hours stitching two different states together (one captured client log
+held 11,055 ghost-removal lines, freezing the game). Every state capture now mints a session token that
+travels with the world transfer and comes back in the handshake; a client whose token does not match gets
+the save, and a transfer carrying a new token is allowed to reload the client even while the mirror is
+running (capped at two such reloads per session). Verified machine-to-machine: a client holding a
+three-day-newer copy of the same world converged to the host's exact structure count within seconds.
+
+**Reconcile hardened.** Ghost removals are capped at 50 per snapshot with one summary log line, and when
+more than 2000 local structures are unknown to the host it stops deleting entirely - that is not ghosts,
+that is a different world state, and the new transfer logic delivers the right save instead.
+
+**The joining player's cryo gun makes snow again (Moonbugy).** Pellets were recreated on the host with a
+bare mid-frame write and no velocity, racing the simulation workers - they vanished shortly after landing.
+They now carry the client-computed velocity and go through the game's own when-idle mutation queue, the
+same path vanilla uses. Verified: 22/24 pellets persisted and mirrored.
+
+**Emptying the vacuum tank works for the joining player (Maelle).** Vanilla decrements the tank before a
+deferred queue creates the elements - and that queue is deliberately disabled on the joining side, so the
+tank drained into nothing. The release is now computed on the client (vanilla spread, angle and speed),
+replayed by the host through the when-idle queue, and anything the host refuses comes back to the tank.
+
+## 0.9.149-beta
+
+**The joining player's vacuum now mirrors the base game's logic exactly.** 0.9.148 fixed the crash that
+deleted everything, but the order of operations was still backwards: the host removed up to ten elements
+and sent the types over, and the joining player's side silently discarded whatever did not fit into the
+tanks - so with full tanks, material still vanished from the world. The vacuum act now carries the tank
+state (types, amounts, capacity, active-tank setting), and the host finds a tank slot *before* removing
+anything, simulating the fill within the batch the same way the game's own slot function does. What does
+not fit stays in the world, and the client shows the vanilla "tanks full" toast. The host also applies
+the game's intake rules that were missing from the reimplementation: liquids, gases and static materials
+are never vacuumed, materials flagged non-transportable are skipped, and zone authorization is checked
+per cell.
+
+## 0.9.148-beta
+
+**The joining player's vacuum deleted everything it sucked up (Maelle).** A refactor in 0.9.141 renamed
+the collected-type variable in both grabber paths and, by global replace, in the vacuum handler too - but
+the vacuum handler never got the line that defines it. The host removed the element from the world, then
+hit a ReferenceError swallowed by an empty catch: the material was gone, the collected-types list stayed
+empty, the response packet was never sent, and the client's tank stayed empty. The skipped counter also
+disabled the 10-elements-per-tick intake limit, so a single pass could swallow the entire intake circle.
+The handler now resolves the grabbed type the same way the grabber does (merged particles resolve to their
+real material) and compares the vacuum's filter against that resolved type.
+
+## 0.9.147-beta
+
+**Amends 0.9.146.** That fix applied the joining player's filter config to every freshly built structure
+with a filter - but the gloom emitter and the critter fence carry *fixed* filters the game assigns on its
+own (the emitter's sets its density), and a player config stamped over them breaks their mechanics. The
+override now applies only to structures the game itself marks filter-configurable (`tooltipHover.type ===
+"filter"`, minus the critter fence), and a copy-paste travels under its own flag: the pasted filter is
+assigned verbatim to the same structure type, which also covers machines that only ever get a filter
+through copying. Game-forced liquid/gas flags survive the merge, since the player's filter config does not
+carry those keys at all.
+
 ## 0.9.146-beta
 
-**Steam invite now tries a direct connection automatically.** Host (Steam) still creates the Friends-only lobby and overlay invite — nothing new to share — but the host also opens TCP 27777 (UPnP when the router allows it) and, after the Steam hello, tells the joining friend the LAN and public address over P2P. The client tries LAN first (avoids hairpin NAT), then the public IP, with a session token so a random scanner cannot join the open port. If Direct comes up, the world stream moves to WebSocket (full bandwidth, binary frames); Steam stays for invites and as fallback when Direct drops or CGNAT blocks it. Old mods ignore the upgrade message and keep using Steam P2P.
+**Filters placed by a joining player kept coming out with the host's config (Maelle, Moonbugy).** The game
+assigns a freshly placed filter its configuration inside the *building:placed* handler, reading
+`store.options.defaultFilter` - the filter-config UI state of *whoever is placing*. In a session the host
+places everything on the joining player's behalf, so that handler ran on the host and stamped in the host's
+current selection, regardless of what the client had configured. Copy-paste lost the filter the same way:
+the game copies it from the copying player's session, which the host does not have. The placement act now
+carries the placing player's filter (from the copied structure if pasting, otherwise from their own filter
+config), and the host overwrites the freshly built structure's filter with it before mirroring it out.
+Only filter-bearing structures are touched - the game marks those itself - and pass-through pieces keep
+the affectsLiquid/affectsGas flags the game forces on them. Editing an already placed filter has worked
+since 0.9.142; this closes the placement half of the report.
 
 ## 0.9.145-beta
 
-**World holes over the internet (Steam relay and dropped packets) — fixed at the source.** The client used to acknowledge the *latest* world batch it had seen, so a lost packet in the middle counted as delivered. The host then never resent those rows, which is why a Steam session could look like Swiss cheese while LAN looked fine. The ack is now a contiguous watermark: batch 52 without 51 keeps the ack at 50, the hole is NACKed immediately, and those chunks are resent from the *current* state. The same path covers Direct/UPnP and LAN when a batch is dropped during menu or world load.
-
-**Save transfer no longer restarts from zero.** A `world-need` for an old transfer id used to throw the whole ~700 KB save away and start over. The host now keeps the chunks for ~20 s after `world-end` and only resends the missing indices.
-
-**Steam P2P sends the same binary world frames as WebSocket** (no base64 tax) and caps live batches at ~48 KB, matching the save-chunk limit the relay can actually carry. `sendP2PPacket` returning false now throttles the host instead of filling a silent buffer.
-
-**A slow peer no longer starves everyone else's bandwidth.** Congestion still waits for the slowest ack (so that player does not get holes), but the send budget no longer drops to 25 % just because one VPN client's apply queue is long.
-
+**Rubber-band lag over the internet - our bug, not your connection.** The TCP sockets carrying a direct or
+LAN session were left with Nagle's algorithm enabled, which Node does by default. Nagle holds a small write
+until the previous small segment is acknowledged, so only one may be in flight at a time. Every message goes
+out as its own write and player positions are sent 30 times a second, which means an 80 ms link passed
+roughly twelve of them per second and delivered the rest in bursts - while digging, grabbing and placing
+queued in the same stream behind them. On a LAN the round trip is under a millisecond and none of this shows,
+which is why it survived this long; over the internet it produced exactly the symptoms players described:
+good ping, good bandwidth, strong host, and a session that still felt like rubber, with a teammate unable to
+pick anything up. Both ends now set TCP_NODELAY. (Reported by friberg, whose 80 ms ping on a 600/300 line
+ruled the connection out; the same complaint had come from others who had already tried Steam, Hamachi and
+direct hosting and found all three equally bad - which fits, since the fault was below all of them.)
 ## 0.9.144-beta
 
 **The Steam relay now announces itself.** A session invited through Steam runs over Valve's relay, which

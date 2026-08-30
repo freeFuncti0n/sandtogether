@@ -15,12 +15,12 @@ const PREVIEW = path.resolve(__dirname, '../workshop/preview.png');
 
 const TITLE = 'SandTogether — Co-op Multiplayer';
 const DESCRIPTION = `[h1]SandTogether — Co-op Multiplayer for Sandustry[/h1]
-[b]Author: Kamil Padula[/b] — [b]Contributors: dotNine, Knight-HD, DwoaC, Cr0ss0vr, TCentraL, AlyxiaFox, NanYu_sad.[/b]
+[b]Author: Kamil Padula[/b] — [b]Contributors: dotNine, Knight-HD, DwoaC, Cr0ss0vr, TCentraL, AlyxiaFox, NanYu_sad., darkalien, Ylvakiller[/b]
 
 Play Sandustry together in ONE living world — the same sand, the same factory, the same fluids, streamed live between players. Up to 4 players, over the internet or on a LAN.
 
 [h2]⚠ AFTER SUBSCRIBING — READ THIS (ONE-TIME setup)[/h2]
-[b]Installed an early August build and never see updates?[/b] Run the installer ONE more time — a bug in those builds silently broke the auto-updater, so the game kept an old copy of the mod. Every build since fixes itself no matter what the Workshop delivered. Fixed from v0.9.72; after that single re-run, updates are automatic again.
+[b]Installed a build from before v0.9.72 and never see updates?[/b] Run the installer ONE more time - those builds shipped a broken auto-updater. Since then updates are automatic.
 
 Sandustry has no mod loader yet, so after subscribing you run the installer [b]once[/b]:
 [olist]
@@ -58,7 +58,7 @@ Then press [b]Load last save & PLAY[/b] (or pick a save) — your world is sent 
 [/list]
 
 [h2]Performance[/h2]
-The world is streamed as changed rows only, compressed, and — between players on the same mod over LAN or a direct connection — as raw binary frames instead of text, which removes a quarter of the bytes and all of the encoding work. Incoming world data is applied in slices across frames, so a big packet never freezes the picture: measured on a full-size world, the worst client frame dropped from 237 ms to about 16 ms while throughput rose past 20 MB/s. The host adapts its send rate to what the link and the slowest client can actually take.
+Only changed rows travel, compressed; incoming data is applied in slices so a big packet never freezes the picture (worst client frame: 237 ms before, ~16 ms now, past 20 MB/s). The host adapts its send rate to the link and the slowest client.
 
 [h2]The SandTogether panel (top-right)[/h2]
 [list]
@@ -73,9 +73,9 @@ Both players must run the same mod version AND the same game version — the pan
 [b]Port forwarded and still nothing?[/b] The mod listens on [b]TCP 27777[/b] (TCP, not UDP), and the host Windows Firewall must let [b]Sandustry.exe[/b] through on public networks.
 
 [h2]💛 Thank you — this mod is community-built[/h2]
-Code contributors: [b]dotNine[/b] (player models, world auto-transfer, collision sync), [b]Knight-HD[/b] (building placement, grabber rework, teammate ghosts), [b]DwoaC[/b] (the macOS port — installer, launcher and the Steam-callback fix), [b]Cr0ss0vr[/b] (precise client demolish selection, foundation cleanup after demolition, and the report and first patch for progression not reaching the client — the trail that led to the 0.9.132 root cause), [b]TCentraL[/b] (blob-expanding red-tile cleanup — our sharpest tester who then sent code), [b]AlyxiaFox[/b] (congestion control for the world sync) and [b]NanYu_sad.[/b] (the complete Simplified Chinese translation).
+Code contributors: [b]dotNine[/b] (player models, world auto-transfer, collision sync), [b]Knight-HD[/b] (building placement, grabber rework, teammate ghosts), [b]DwoaC[/b] (the macOS port — installer, launcher and the Steam-callback fix), [b]Cr0ss0vr[/b] (precise client demolish selection, foundation cleanup after demolition, and the report and first patch for progression not reaching the client — the trail that led to the 0.9.132 root cause), [b]TCentraL[/b] (blob-expanding red-tile cleanup — our sharpest tester who then sent code), [b]AlyxiaFox[/b] (congestion control for the world sync) [b]NanYu_sad.[/b] (the complete Simplified Chinese translation), [b]darkalien[/b] (root-caused the client-filter behaviour and filed the fix) and [b]Ylvakiller[/b] (whose Factorio engineering articles set the direction for the 10x performance work in 0.9.153-155).
 
-And to everyone whose precise reports shaped almost every release: [b]TCentraL[/b], [b]Warlow[/b], [b]derErste67[/b], [b]Akriz[/b], [b]tony.s.jennette[/b], [b]ZeroHazard[/b], [b]Tobi1Kenobi[/b], [b]Drewby[/b], [b]Spiddy[/b], [b]J.Slayer[/b], [b]Psychospark[/b] (our first Linux player), [b]MFeltmann[/b], [b]Dr. Ethulwulf Sauce[/b], [b]NanYu_sad.[/b], [b]ЗаКеЛьМан[/b], [b]星灵[/b], [b]Lofar666[/b], [b]Bobulator333[/b], [b]thatsmaik[/b], [b]uolkx[/b], [b]MIXUIL[/b], [b]Justin[/b], [b]Hooye!![/b], [b]Sprut[/b] — and everyone else who reported, tested and played.
+And to everyone whose precise reports shaped almost every release: [b]TCentraL[/b], [b]Warlow[/b], [b]derErste67[/b], [b]Akriz[/b], [b]tony.s.jennette[/b], [b]ZeroHazard[/b], [b]Tobi1Kenobi[/b], [b]Drewby[/b], [b]Spiddy[/b], [b]J.Slayer[/b], [b]Psychospark[/b] (our first Linux player), [b]MFeltmann[/b], [b]Dr. Ethulwulf Sauce[/b], [b]NanYu_sad.[/b], [b]ЗаКеЛьМан[/b], [b]星灵[/b], [b]Lofar666[/b], [b]Bobulator333[/b], [b]thatsmaik[/b], [b]uolkx[/b], [b]MIXUIL[/b], [b]Justin[/b], [b]Hooye!![/b], [b]Sprut[/b], [b]Maelle[/b], [b]Moonbugy[/b], [b]Knif Boiiiiiii[/b], [b]Sessional[/b], [b]friberg[/b], [b]Shadow City Empire[/b], [b]Clavius[/b], [b]Golden Pan please[/b], [b]hunters01[/b], [b]Lecker Bierchen[/b], [b]Lurkily[/b] — and everyone else who reported, tested and played.
 
 [h2]Open source / Contributing[/h2]
 Full source on GitHub: [url=https://github.com/IronBamBam1990/sandtogether]github.com/IronBamBam1990/sandtogether[/url] — MIT license. Bug fixes and features are welcome as pull requests; the README covers the architecture and dev workflow.
@@ -106,7 +106,7 @@ Full source on GitHub: [url=https://github.com/IronBamBam1990/sandtogether]githu
   const details = {
     title: TITLE,
     description: DESCRIPTION,
-    changeNote: 'v0.9.146-beta - Steam invite now tries a direct connection automatically. Host (Steam) still uses the Friends lobby and overlay invite, but also opens TCP 27777 and sends the LAN/public address over P2P after hello. The joining player tries LAN first, then the public IP, with a session token so the open port is not a public lobby. If Direct works, the world stream uses WebSocket (full speed); Steam remains for invites and as fallback when UPnP/CGNAT fail. Also in this drop: contiguous world-ack watermark (no more Swiss-cheese holes on lost packets), resumable save transfer, Steam binary frames, 48 KB Steam batch cap.',
+    changeNote: 'v0.9.163-beta - Steam invite now tries Direct automatically (LAN then public IP, session token; Steam stays as fallback). Contiguous world-ack watermark so lost packets are resent instead of leaving holes. Steam binary frames + 48 KB cap while anyone is still on P2P. Built on 0.9.162 (installer FH-alias for re-minified Steam builds).',
     previewPath: PREVIEW,
     contentPath: CONTENT,
     visibility: vis,
