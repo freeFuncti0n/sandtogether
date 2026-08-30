@@ -16,7 +16,7 @@
 			window.electron && window.electron.log && window.electron.log("info", "SandTogether:game", line);
 		} catch (e) {}
 	};
-	const VER = "0.9.162-beta";
+	const VER = "0.9.163-beta";
 	const AUTHOR = "Kamil Padula";
 	const CONTRIBUTORS = "dotNine, Knight-HD, DwoaC, Cr0ss0vr, TCentraL, AlyxiaFox, NanYu_sad.";
 	const VACUUM_CAPS = [500, 1000, 1500, 2000, 2500, 3000]; // tabela pojemności z kodu gry (moduł 6420)
@@ -47,7 +47,7 @@
 			btn_join_id: "Join by ID (clipboard)", lobby_copied: "Copied!",
 			clipboard_no_id: "Clipboard has no Lobby ID — first click the host's green Lobby ID line to copy it",
 			hint: "click header to hide (Ctrl+Shift+H)", by: "by " + AUTHOR + " + " + CONTRIBUTORS,
-			hosting_steam: "HOSTING (Steam) — invite your friend!", hosting_lan: (p) => "HOSTING (LAN :" + p + ")",
+			hosting_steam: "HOSTING (Steam) — invite your friend! Direct is used automatically when possible.", hosting_lan: (p) => "HOSTING (LAN :" + p + ")",
 			joined: (tr) => "CONNECTED to host (" + tr + ")", players: (n) => "Players online: " + n,
 			player_left: (n) => "Player left. Online: " + n, error: (m) => "Error: " + m,
 			creating_lobby: "creating lobby...", connect_first: "Connect first!",
@@ -74,7 +74,7 @@
 			unsupported: "⚠ Unsupported game version — the game updated and broke the mod. Re-run install, or check the Workshop page for an update.",
 			mp_btn: "Multiplayer",
 			lb_title: "MULTIPLAYER", lb_sub: "SandTogether co-op — up to 4 players",
-			lb_host_steam_d: "Play over the internet — invite friends from your Steam friend list",
+			lb_host_steam_d: "Invite from your Steam friends list. Direct is used automatically when the port opens; otherwise Steam relay.",
 			lb_host_lan_d: "Local network or VPN (Tailscale, Radmin...)",
 			lb_join_lan_d: "Paste the address your friend gave you — works for an internet host, a LAN or a VPN",
 			lb_join_id_d: "Join with a Lobby ID copied to the clipboard",
@@ -84,6 +84,11 @@
 			lb_play_note: "Your world is sent to joined players automatically. You can also just use Continue / Load Game.",
 			lb_wait_host: "Waiting for the host's world — it downloads and loads automatically.",
 			lb_hint: "Tip: a Steam invite can be accepted at ANY time — everything else happens automatically.",
+			hybrid_direct: "Direct link on — Steam is only used for invites",
+			hybrid_steam_fb: "Direct unreachable — staying on Steam P2P",
+			hybrid_trying: "Trying a direct connection…",
+			peer_kind_ws: "Direct",
+			peer_kind_steam: "Steam",
 			btn_host_direct: "Host (Internet — direct)",
 			lb_host_direct_d: "Full speed, no Steam relay. Opens the port on your router automatically (UPnP).",
 			direct_ready: "DIRECT hosting — give your friend the address below",
@@ -112,7 +117,7 @@
 			btn_join_id: "Dołącz po ID (schowek)", lobby_copied: "Skopiowano!",
 			clipboard_no_id: "Schowek nie zawiera Lobby ID — najpierw kliknij zieloną linię Lobby ID u hosta, żeby je skopiować",
 			hint: "kliknij nagłówek by ukryć (Ctrl+Shift+H)", by: "autor: " + AUTHOR + " + " + CONTRIBUTORS,
-			hosting_steam: "HOST (Steam) — zaproś znajomego!", hosting_lan: (p) => "HOST (LAN :" + p + ")",
+			hosting_steam: "HOST (Steam) — zaproś znajomego! Direct włączy się sam, gdy będzie można.", hosting_lan: (p) => "HOST (LAN :" + p + ")",
 			joined: (tr) => "POŁĄCZONO z hostem (" + tr + ")", players: (n) => "Gracze online: " + n,
 			player_left: (n) => "Gracz wyszedł. Online: " + n, error: (m) => "Błąd: " + m,
 			creating_lobby: "tworzenie lobby...", connect_first: "Najpierw połącz się!",
@@ -139,7 +144,7 @@
 			unsupported: "⚠ Niewspierana wersja gry — gra się zaktualizowała i rozjechała moda. Uruchom install ponownie albo sprawdź update na Warsztacie.",
 			mp_btn: "Multiplayer",
 			lb_title: "MULTIPLAYER", lb_sub: "SandTogether co-op — do 4 graczy",
-			lb_host_steam_d: "Graj przez internet — zaproś znajomych z listy Steam",
+			lb_host_steam_d: "Zaproś z listy znajomych Steam. Direct włącza się sam, gdy port się otworzy; inaczej zostaje relay Steama.",
 			lb_host_lan_d: "Sieć lokalna albo VPN (Tailscale, Radmin...)",
 			lb_join_lan_d: "Wklej adres, który dostałeś od kolegi — działa dla hosta z internetu, LAN i VPN",
 			lb_join_id_d: "Dołącz po Lobby ID skopiowanym do schowka",
@@ -149,6 +154,11 @@
 			lb_play_note: "Twój świat wyśle się dołączonym graczom automatycznie. Możesz też po prostu użyć Kontynuuj / Wczytaj.",
 			lb_wait_host: "Czekam na świat hosta — pobierze się i wczyta automatycznie.",
 			lb_hint: "Tip: zaproszenie Steam możesz przyjąć w KAŻDEJ chwili — reszta dzieje się sama.",
+			hybrid_direct: "Direct działa — Steam tylko do zaproszeń",
+			hybrid_steam_fb: "Direct niedostępny — zostaję na Steam P2P",
+			hybrid_trying: "Próbuję połączenia bezpośredniego…",
+			peer_kind_ws: "Direct",
+			peer_kind_steam: "Steam",
 			btn_host_direct: "Host (internet — bezpośrednio)",
 			lb_host_direct_d: "Pełna prędkość, bez relaya Steama. Sam otwiera port na routerze (UPnP).",
 			direct_ready: "Hostujesz BEZPOŚREDNIO — podaj koledze adres poniżej",
@@ -177,7 +187,7 @@
 			btn_join_id: "通过ID加入(剪贴板)", lobby_copied: "已复制!",
 			clipboard_no_id: "剪贴板中没有房间ID——请先点击房主的绿色房间ID行进行复制",
 			hint: "点击标题栏隐藏 (Ctrl+Shift+H)", by: "作者:" + AUTHOR + " + " + CONTRIBUTORS,
-			hosting_steam: "正在创建房间(Steam)——邀请你的朋友吧!", hosting_lan: (p) => "正在创建房间(局域网 :" + p + ")",
+			hosting_steam: "正在创建房间(Steam)——邀请朋友!端口开通后会自动直连。", hosting_lan: (p) => "正在创建房间(局域网 :" + p + ")",
 			joined: (tr) => "已连接到房主(" + tr + ")", players: (n) => "在线玩家:" + n,
 			player_left: (n) => "玩家已离开。在线人数:" + n, error: (m) => "错误:" + m,
 			creating_lobby: "正在创建房间...", connect_first: "请先连接!",
@@ -203,7 +213,7 @@
 			unsupported: "⚠ 不支持的游戏版本——游戏已更新并导致模组失效。请重新运行安装程序,或前往创意工坊页面查看更新。",
 			mp_btn: "多人游戏",
 			lb_title: "多人游戏", lb_sub: "SandTogether 合作模式——最多4名玩家",
-			lb_host_steam_d: "通过互联网游玩——从Steam好友列表邀请朋友",
+			lb_host_steam_d: "从Steam好友列表邀请。端口开通后自动直连；否则走Steam中继。",
 			lb_host_lan_d: "局域网或VPN(Tailscale、Radmin等)",
 			lb_join_lan_d: "粘贴好友给你的地址 — 互联网房主、局域网和 VPN 均可",
 			lb_join_id_d: "使用复制到剪贴板的房间ID加入",
@@ -213,6 +223,11 @@
 			lb_play_note: "你的世界会自动发送给已加入的玩家。你也可以直接使用继续/加载游戏。",
 			lb_wait_host: "正在等待房主的世界——它会自动下载并加载。",
 			lb_hint: "提示:Steam邀请可以在任何时候接受——其余的都会自动完成。",
+			hybrid_direct: "直连已开启 — Steam仅用于邀请",
+			hybrid_steam_fb: "直连不可达 — 继续使用Steam P2P",
+			hybrid_trying: "正在尝试直连…",
+			peer_kind_ws: "直连",
+			peer_kind_steam: "Steam",
 			btn_host_direct: "创建房间(互联网 — 直连)",
 			lb_host_direct_d: "全速直连,不经过Steam中继。自动在路由器上开放端口(UPnP)。",
 			direct_ready: "直连主机模式 — 把下面的地址发给朋友",
@@ -526,9 +541,10 @@
 				setStatus(t("joined", ev.transport));
 			} else if (ev.kind === "peer-hello" || ev.kind === "peer-connected") {
 				const isNew = !ST.peers.has(ev.id);
-				if (isNew) ST.peers.set(ev.id, { nick: ev.nick || "?", x: 0, y: 0, tx: 0, ty: 0, lastSeen: performance.now() });
+				if (isNew) ST.peers.set(ev.id, { nick: ev.nick || "?", x: 0, y: 0, tx: 0, ty: 0, lastSeen: performance.now(), kind: ev.peerKind || (ST.net.transport === "ws" ? "ws" : "steam") });
 				if (ev.nick) ST.peers.get(ev.id).nick = ev.nick;
-				if (ev.kind === "peer-hello") addChat("★", t("chat_joined", ev.nick || "?")); // widoczna informacja KTO dołączył
+				if (ev.peerKind) ST.peers.get(ev.id).kind = ev.peerKind;
+				if (ev.kind === "peer-hello" && isNew) addChat("★", t("chat_joined", ev.nick || "?")); // widoczna informacja KTO dołączył
 				// 0.9.85: DOKLADNIE RAZ na peera — odsylanie hello na kazde peer-hello tworzylo petle
 					if (ST._nickCustom && !ST._greeted.has(ev.id)) {
 						ST._greeted.add(ev.id);
@@ -563,9 +579,36 @@
 				ST._fireQ = []; ST._cryoQ = []; ST._grabbedCells.clear(); ST._placedCells.clear(); ST._volcQ = []; ST._caulkQ = []; ST._caulkRmQ = []; ST._shakeQ = [];
 				ST._gotHostWorld = false;
 				ST._lastAppliedSq = null; // drop the ack so it cannot throttle the next session
+				if (ST._appliedSqs) ST._appliedSqs.clear();
+				if (ST._droppedSqs) ST._droppedSqs.clear();
 				resetWorldQueue();        // queue, row hashes and congestion state are all per session
 				setClientPaused(false);
+			} else if (ev.kind === "upgrading") { setStatus(t("hybrid_trying"), "#fd5");
+			} else if (ev.kind === "upgraded") {
+				ST.net.transport = ev.transport;
+				for (const p of ST.peers.values()) p.kind = ev.transport === "ws" ? "ws" : "steam";
+				if (ev.transport === "ws") {
+					ST._directMode = !isLocalAddr(ev.host);
+					setStatus(t("hybrid_direct"), "#5f5");
+					log("HYBRID: Direct WS — host=" + ev.host + " port=" + ev.port);
+				} else if (ev.fallback) {
+					ST._directMode = false;
+					setStatus(t("hybrid_steam_fb"), "#fd5");
+					log("HYBRID: fallback Steam P2P");
+				}
+			} else if (ev.kind === "peer-upgraded") {
+				const p = ST.peers.get(ev.id);
+				if (p) p.kind = ev.transport;
+				if (ST.net.role === "host" && ST.peers.size) {
+					if (!anySteamPeer()) setStatus(t("hybrid_direct"), "#5f5");
+					else if (ev.transport === "steam") setStatus(t("hybrid_steam_fb"), "#fd5");
+				}
+				log("HYBRID: peer", ev.id, "teraz", ev.transport);
+			} else if (ev.kind === "upgrade-failed") {
+				setStatus(t("hybrid_steam_fb"), "#fd5");
 			} else if (ev.kind === "reconnecting") { setStatus(t("reconnecting", ev.attempt), "#fd5");
+			} else if (ev.kind === "steam-congested") {
+				if (ST.wsx) ST.wsx.rate = Math.max(0.02, (ST.wsx.rate || 1) * 0.7);
 			} else if (ev.kind === "version-mismatch") setStatus(t("ver_mismatch"), "#f66");
 			else if (ev.kind === "error" && /ECONNREFUSED/i.test(String(ev.message || "")) && /\b(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\b/.test(String(ev.message || ""))) {
 				// 0.9.133: publiczny adres + odmowa = najczesciej proba polaczenia z wlasnym IP z tej samej sieci
@@ -588,7 +631,7 @@
 			try { ST._nickCustom = localStorage.getItem("st_nick") || null; } catch (e) { ST._nickCustom = null; }
 			ST._myNick = ST._nickCustom || s.myNick || null; // własny nick > nick Steam > default (feedback TCentraL: LAN = "Player" na stałe)
 			ST._gameFp = s.gameFp || null; // odcisk buildu gry (guard różnych buildów między graczami)
-			for (const p of s.peers) { const old = ST.peers.get(p.id); ST.peers.set(p.id, Object.assign({ x: 0, y: 0, tx: 0, ty: 0 }, old || {}, { nick: p.nick, lastSeen: performance.now() })); } // 0.9.82: zachowaj modVer/ping znanego peera
+			for (const p of s.peers) { const old = ST.peers.get(p.id); ST.peers.set(p.id, Object.assign({ x: 0, y: 0, tx: 0, ty: 0 }, old || {}, { nick: p.nick, kind: p.kind, lastSeen: performance.now() })); } // 0.9.82: zachowaj modVer/ping znanego peera
 			// 0.9.76 HANDSHAKE: renderer wstal (start gry ALBO przeladowanie po wczytaniu swiata).
 			// Polaczenie zyje w procesie main, wiec host NIE wie, ze stracilismy caly stan sesji —
 			// mowimy mu to wprost i podajemy, na jakim swiecie jestesmy (decyduje: stream czy save).
@@ -719,18 +762,23 @@
 		} else if (msg.t === "wc") {
 			applyWorldBatch(msg).catch((e) => { if ((ST._applyErrN = (ST._applyErrN || 0) + 1) <= 3) log("apply error:", e.message, String(e.stack || "").split(String.fromCharCode(10)).slice(0, 4).join(" | "), "bin=" + (msg.__bytes ? msg.__bytes.length : "BRAK") + " d=" + (msg.d ? msg.d.length : "BRAK") + " z=" + msg.z); });
 		} else if (msg.t === "wcack") {
-			// Client acks the last APPLIED batch. This is the only signal we have for how far behind it is:
-			// Steam's send buffer is invisible to us and sendP2PPacket never reports that it is full.
-			if (ST.net.role === "host" && typeof msg.sq === "number") {
+			// Client acks a CONTIGUOUS watermark (sq = highest fully applied with no holes below it).
+			if (ST.net.role === "host") {
 				const p = ST.peers.get(from);
-				if (p) { if (p.ackSq !== msg.sq) ST.wsx.ackAdvanceT = performance.now(); p.ackSq = msg.sq; p.qd = msg.qd | 0; ST.wsx.ackSeen = true; } // per peer, so the slowest one governs
-				// 0.9.78: paczki potwierdzone przez NAJWOLNIEJSZEGO klienta mozna zapomniec
-				const w0 = ST.wsx;
-				if (w0.unacked && w0.unacked.size) {
-					let minAck = null;
-					for (const pp of ST.peers.values()) if (typeof pp.ackSq === "number" && (minAck === null || pp.ackSq < minAck)) minAck = pp.ackSq;
-					if (minAck !== null) for (const sq of [...w0.unacked.keys()]) if (sq <= minAck) w0.unacked.delete(sq);
+				if (p && typeof msg.qd === "number") p.qd = msg.qd | 0;
+				if (p && typeof msg.sq === "number") {
+					const prev = p.ackSq;
+					if (p.ackSq !== msg.sq) ST.wsx.ackAdvanceT = performance.now();
+					p.ackSq = msg.sq;
+					ST.wsx.ackSeen = true;
+					if (!msg.wm && typeof prev === "number" && msg.sq > prev + 1) {
+						const skipped = [];
+						for (let s = prev + 1; s < msg.sq; s++) skipped.push(s);
+						requeueUnackedSeqs(skipped, "skok ack starego klienta");
+					}
 				}
+				if (Array.isArray(msg.gaps) && msg.gaps.length) requeueUnackedSeqs(msg.gaps, "luki od klienta");
+				commitAckedBatches();
 			}
 		} else if (msg.t === "act") {
 			if (ST.net.role === "host") replayAction(msg, from);
@@ -857,17 +905,17 @@
 			ST._worldRx.ended = true;
 			maybeFinishRx();
 		} else if (msg.t === "world-need") {
-			// host: klient prosi o brakujące kawałki -> ponów je (priorytetowo)
-			// 0.9.75: paczki trzymamy tylko dla BIEŻĄCEGO transferu. Prośba o starszy tid (klient utknął
-			// na poprzednim) = odesłanie mu paczek z nowego transferu, które i tak odrzuci → wieczne "recovering".
-			// Zamiast tego startujemy świeży, kompletny transfer.
+			// host: klient prosi o brakujące kawałki -> ponów je (priorytetowo).
+			// 0.9.145/163: NEVER restart the whole save on a stale tid — that threw away the parts the
+			// client already had. Ignore the old request; keep the current transfer resumable.
 			if (ST._wtx && msg.tid !== undefined && ST._wtx.tid !== undefined && msg.tid !== ST._wtx.tid) {
-				if (performance.now() - (ST._wtxRestartT || 0) < 3000) { return; } // 0.9.87: nie restartuj częściej niż co 3 s
-				ST._wtxRestartT = performance.now();
-				log("world-need dla starego transferu tid " + msg.tid + " (mamy " + ST._wtx.tid + ") — wysyłam świat od nowa");
-				ST._autoSendT = 0; ST._wtx = null; sendWorld(); return;
+				log("world-need dla starego transferu tid " + msg.tid + " (mamy " + ST._wtx.tid + ") — ignoruję, nie restartuję");
+				return;
 			}
-			if (ST._wtx && Array.isArray(msg.idx)) for (const i of msg.idx) if (ST._wtx.parts[i] !== undefined) ST._wtx.queue.push(i);
+			if (ST._wtx && Array.isArray(msg.idx)) {
+				for (const i of msg.idx) if (ST._wtx.parts[i] !== undefined) ST._wtx.queue.push(i);
+				if (ST._wtxHold) { clearTimeout(ST._wtxHold); ST._wtxHold = null; }
+			}
 			pumpWtx();
 		}
 	}
@@ -1030,6 +1078,97 @@
 		if (w.unacked) w.unacked.clear();
 		log("RESET potwierdzen dla", peerId || "wszystkich", "(" + why + ") — wznawiam pelna wysylke");
 	}
+	// 0.9.163: contiguous ACK watermark (ported from fork 0.9.145). sq is only counted after
+	// drainApplyQ finishes a batch. Holes (received 52 without 51) stay in _appliedSqs and do NOT
+	// raise the watermark, so the host never treats a lost packet as delivered.
+	function noteAppliedSq(sq) {
+		if (typeof sq !== "number") return;
+		if (!ST._appliedSqs) ST._appliedSqs = new Set();
+		ST._appliedSqs.add(sq);
+		let wm = ST._lastAppliedSq;
+		if (wm == null) wm = 0;
+		if (wm > 0 && sq > wm + 32) {
+			ST._lastAppliedSq = sq;
+			ST._appliedSqs.clear();
+			if (ST._droppedSqs) {
+				for (const s of [...ST._droppedSqs]) if (s <= sq) ST._droppedSqs.delete(s);
+			}
+			return;
+		}
+		while (ST._appliedSqs.has(wm + 1)) {
+			wm += 1;
+			ST._appliedSqs.delete(wm);
+			if (ST._droppedSqs) ST._droppedSqs.delete(wm);
+		}
+		ST._lastAppliedSq = wm;
+		if (ST._appliedSqs.size > 256) {
+			const keep = [...ST._appliedSqs].sort((a, b) => a - b).slice(-128);
+			ST._appliedSqs = new Set(keep);
+		}
+	}
+	function noteDroppedSq(sq) {
+		if (typeof sq !== "number") return;
+		if (!ST._droppedSqs) ST._droppedSqs = new Set();
+		ST._droppedSqs.add(sq);
+		if (ST._droppedSqs.size > 256) {
+			const keep = [...ST._droppedSqs].sort((a, b) => a - b).slice(-128);
+			ST._droppedSqs = new Set(keep);
+		}
+	}
+	function collectAckGaps() {
+		if (ST._loadingWorld) return [];
+		const myScene = ST.state && ST.state.store && ST.state.store.scene && ST.state.store.scene.active;
+		if (myScene === 1) return [];
+		const wm = ST._lastAppliedSq || 0;
+		const have = new Set();
+		if (ST._appliedSqs) for (const s of ST._appliedSqs) have.add(s);
+		if (ST._applyQ) for (const it of ST._applyQ) if (typeof it.sq === "number") have.add(it.sq);
+		let maxSeen = wm;
+		for (const s of have) if (s > maxSeen) maxSeen = s;
+		if (ST._droppedSqs) for (const s of ST._droppedSqs) if (s > maxSeen) maxSeen = s;
+		const gaps = [];
+		for (let s = wm + 1; s <= maxSeen && gaps.length < 32; s++) {
+			if (have.has(s)) continue;
+			gaps.push(s);
+		}
+		return gaps;
+	}
+	function requeueUnackedSeqs(sqs, why) {
+		const w = ST.wsx;
+		if (!w || !w.unacked || !sqs || !sqs.length) return;
+		let lost = 0;
+		const hit = [];
+		for (const sq of sqs) {
+			const rec = w.unacked.get(sq);
+			if (!rec) continue;
+			w.unacked.delete(sq);
+			hit.push(sq);
+			for (const idx of rec.idx) { if (w.rowH) w.rowH.delete(idx); w.pending.add(idx); lost++; }
+		}
+		if (lost && performance.now() - (w.nackLogT || 0) > 1000) {
+			w.nackLogT = performance.now();
+			log("NACK: " + lost + " chunkow z paczek [" + hit.join(",") + "] ponownie w kolejce (" + why + "), kolejka " + w.pending.size);
+		}
+	}
+	function commitAckedBatches() {
+		const w0 = ST.wsx;
+		if (!w0 || !w0.unacked || !w0.unacked.size) return;
+		let minAck = null;
+		for (const pp of ST.peers.values()) if (typeof pp.ackSq === "number" && (minAck === null || pp.ackSq < minAck)) minAck = pp.ackSq;
+		if (minAck === null) return;
+		for (const sq of [...w0.unacked.keys()]) if (sq <= minAck) w0.unacked.delete(sq);
+	}
+	function sendWorldAck() {
+		if (ST.net.role !== "client") return;
+		const gaps = collectAckGaps();
+		const wm = ST._lastAppliedSq || 0;
+		if (!(wm > 0 || gaps.length)) return;
+		ST._lastAckT = performance.now();
+		const ack = { t: "wcack", qd: (ST._applyQ || []).length, wm: 1 };
+		if (wm > 0) ack.sq = wm;
+		if (gaps.length) ack.gaps = gaps;
+		try { net.send(ack); } catch (e) {}
+	}
 	function enqueueFullWorld() {
 		if (!ST.state) return;
 		// 0.9.81: handshake, peer-hello i resync potrafia trafic w te sama chwile — bez tej blokady
@@ -1171,13 +1310,24 @@
 			else { /* strefa komfortu: trzymamy poziom */ }
 			const fast = w.boost || 1;
 			// 0.9.93: SUFIT 150 Mbit/s = 18,75 MB/s; paczki lecą ~10x/s, więc 1,875 MB na paczkę.
-			const HARD_CAP = Math.floor((150 * 1000 * 1000) / 8 / 10);
+			// 0.9.163: Steam P2P — twardy sufit jak przy save (48 KB); Valve-relay gubi wieksze paczki.
+			const STEAM_PKT = 48 * 1024;
+			let HARD_CAP = Math.floor((150 * 1000 * 1000) / 8 / 10);
+			const anySteam = anySteamPeer();
+			if (anySteam) HARD_CAP = Math.min(HARD_CAP, STEAM_PKT);
 			// budzet PROPORCJONALNY do cyklu: przy 8 ms paczki sa male, przy 100 ms duze — pasmo/s stale
 						// ile paczek czeka u najwolniejszego klienta na NALOZENIE — jesli rosnie, wysylamy mniej,
 			// bo dosypywanie danych szybciej niz klient je nakłada tylko puchnie mu kolejke (0.9.111: 548 MB).
-			let worstQd = 0;
-			for (const pp of ST.peers.values()) if ((pp.qd | 0) > worstQd) worstQd = pp.qd | 0;
-			const applyBrake = worstQd >= 12 ? 0.25 : worstQd >= 6 ? 0.5 : worstQd >= 3 ? 0.8 : 1;
+			let worstQd = 0, worstQdFast = 0, anyFast = false;
+			for (const pp of ST.peers.values()) {
+				const qd = pp.qd | 0;
+				if (qd > worstQd) worstQd = qd;
+				if ((pp.ping || 0) > 800) continue;
+				anyFast = true;
+				if (qd > worstQdFast) worstQdFast = qd;
+			}
+			const brakeQd = anyFast ? worstQdFast : 0;
+			const applyBrake = brakeQd >= 12 ? 0.25 : brakeQd >= 6 ? 0.5 : brakeQd >= 3 ? 0.8 : 1;
 			w.qd = worstQd;
 			const budget = Math.min(HARD_CAP, Math.floor(4000 * (w.gap || 33) * w.rate * fast * applyBrake)); // 4 KB/ms = ~4 MB/s bazowo // 8 KB x 30/s = to samo co 24 KB x 10/s  // 0.9.78: 24 KB/paczke = sufit ~240 KB/s (~1,9 Mbit/s) zamiast ~960 KB/s.
 			// LAN tego nie odczuje (i tak rzadko mamy tyle zmian), a internet przestaje sie dlawic wlasnym strumieniem.
@@ -1198,7 +1348,8 @@
 				if (!(A === 127 || A === 10 || (A === 192 && B === 168) || (A === 172 && B >= 16 && B <= 31) || (A === 169 && B === 254))) willSendRaw = false;
 			}
 			// bez kompresji bajty wyjściowe = bajty zserializowane, więc NIE dzielimy przez współczynnik
-			const rawBudget = willSendRaw ? Math.max(256 * 1024, budget) : Math.max(256 * 1024, Math.floor(budget / Math.max(0.02, ratio)));
+			let rawBudget = willSendRaw ? Math.max(256 * 1024, budget) : Math.max(256 * 1024, Math.floor(budget / Math.max(0.02, ratio)));
+			if (anySteam) rawBudget = Math.min(rawBudget, Math.floor(STEAM_PKT / Math.max(0.02, ratio)));
 			const maxN = Math.max(2, Math.min(6000, Math.floor(budget / bpc) * 8));
 			const nearN = Math.min(3000, maxN);              // what players can actually see gets the budget first
 			// Fast lane usage from the PREVIOUS batch, which is stable frame to frame. Without it we
@@ -1338,7 +1489,7 @@
 			if (!w.unacked) w.unacked = new Map();
 			w.unacked.set(w.seq, { idx: take.slice(0), t: now });
 			// q = rozmiar kolejki hosta (odliczanie postępu u klienta, 0.9.62) + sq = numer paczki (wcack, PR #8)
-			sendWorldPacket({ t: "wc", v: 5, z: w.rawMode ? 0 : 1, sq: w.seq, wid: state.store.meta && state.store.meta.worldId, g: ST._worldGen || undefined, scene: state.store.scene && state.store.scene.active, W, H, n: parts.length, q: w.pending.size }, packed, sameVerAll && ST.net.transport === "ws"); // binarnie tylko gdy peer ma ten sam mod i siedzimy na WS
+			sendWorldPacket({ t: "wc", v: 5, z: w.rawMode ? 0 : 1, sq: w.seq, wid: state.store.meta && state.store.meta.worldId, g: ST._worldGen || undefined, scene: state.store.scene && state.store.scene.active, W, H, n: parts.length, q: w.pending.size }, packed, sameVerAll && (ST.net.transport === "ws" || ST.net.transport === "steam")); // binarnie gdy ten sam mod — WS i Steam
 			// EMA of what a chunk really costs on the wire, drives the batch budget above. Cheap chunks
 			// (few changed rows) earn a bigger portion, expensive ones a smaller one, so the byte ceiling
 			// holds regardless of what the sim is doing.
@@ -1388,7 +1539,11 @@
 		const q = ST._applyQ;
 		if (!q || !q.length || !state) return 0;
 		const { map, wall, shadow, auth, sim, etype, W, H } = worldBuffers(state);
-		if (!map) { q.length = 0; return 0; }
+		if (!map) {
+			for (const it of q) noteDroppedSq(it.sq);
+			q.length = 0;
+			return 0;
+		}
 		const cellIds32 = sim ? new Uint32Array(sim.buffer, sim.byteOffset, W * H) : null;
 		const tSlice = performance.now();
 		let applied = 0;
@@ -1422,16 +1577,15 @@
 			it.o = o;
 			// ACK dopiero po NALOZENIU calosci — inaczej host mierzy tempo lacza zamiast tempa klienta
 			// i rozpedza sie w nieskonczonosc (kolejka rosla do setek MB).
-			if (done) q.shift(); else break;
+			if (done) {
+				const finished = q.shift();
+				noteAppliedSq(finished && finished.sq);
+			} else break;
 		}
 		if (q.length) scheduleApplyDrain();
 		if (applied > 0 && ST.wsx) { ST.wsx.applyCount += applied; ST._lastWcT = performance.now(); }
-		// 0.9.158: ACK takze z pompy (watchdog w tle) — frame hook w schowanym oknie chodzi ~1 Hz, wiec
-		// ack niosl ~1 s wieku = stale "26 batches behind" i host pauzowal, choc klient NADAZAL.
-		if (applied > 0 && ST._lastAppliedSq != null && performance.now() - (ST._lastAckT || 0) > 100) {
-			ST._lastAckT = performance.now();
-			try { net.send({ t: "wcack", sq: ST._lastAppliedSq, qd: (ST._applyQ || []).length }); } catch (e) {}
-		}
+		// 0.9.158: ACK takze z pompy (watchdog w tle). 0.9.163: watermark + gaps, nie latest sq.
+		if (applied > 0 && performance.now() - (ST._lastAckT || 0) > 100) sendWorldAck();
 		return applied;
 	}
 	function scheduleApplyDrain() {
@@ -1483,11 +1637,11 @@
 		const menuTest = false;
 		// KLIENT W MENU (fix tony: "menu główne zamienia się w czerwone bloki"): lustro hosta NIE MOŻE
 		// malować po scenie menu — dane świata lądowały w buforach sceny menu jako czerwone kafle.
-		if (myScene === 1) return;
+		if (myScene === 1) { noteDroppedSq(msg.sq); return; }
 		// ŁADOWANIE ŚWIATA W TOKU (fix TCentraL "big map freeze"): pisanie po buforach świata
 		// w TRAKCIE FH.game.load = wyścig z silnikiem wczytującym save (zwiecha/korupcja).
-		// Dropujemy — AUTO-RESYNC po starcie lustra i tak dośle pełny świat.
-		if (ST._loadingWorld) return;
+		// Dropujemy — AUTO-RESYNC po starcie lustra i tak dośle pełny świat. 0.9.163: NACK po wejściu.
+		if (ST._loadingWorld) { noteDroppedSq(msg.sq); return; }
 		if (msg.wid && myWid && msg.wid !== myWid && !menuTest) {
 			// Zaufanie: silnik nadaje wczytanemu światu INNY lokalny worldId niż host używa w "wc", mimo że to
 			// DOKŁADNIE ten sam save (fix "REJECT world" → miroir rejeté → reconcile kasował struktury klienta).
@@ -1512,6 +1666,7 @@
 				setStatus(t("other_world"), "#f66");
 				ST._hostWidSeen = msg.wid; // 0.9.116: swiat hosta, nawet gdy paczke odrzucamy — sluzy do wykrycia "siedze w zlym swiecie"
 			if (!ST.wsx.mismatchLogged) { ST.wsx.mismatchLogged = true; log("REJECT world: worldId host=" + msg.wid + " me=" + myWid + " scene h/c=" + msg.scene + "/" + myScene); }
+				noteDroppedSq(msg.sq);
 				return;
 			}
 			ST._hostWidSeen = msg.wid; // 0.9.132: swiat hosta znamy takze wtedy, gdy paczke przyjmujemy
@@ -1524,9 +1679,10 @@
 		if (!map || W !== msg.W || H !== msg.H) {
 			setStatus(t("dims_differ", W + "x" + H, msg.W + "x" + msg.H), "#f66");
 			if (!ST.wsx.mismatchLogged) { ST.wsx.mismatchLogged = true; log("REJECT world: dims host=" + msg.W + "x" + msg.H + " me=" + W + "x" + H + " map=" + (!!map)); }
+			noteDroppedSq(msg.sq);
 			return;
 		}
-		if (msg.v !== 5) { setStatus(t("ver_mismatch"), "#f66"); return; } // v5 = row-delta (maska zmienionych wierszy per chunk)
+		if (msg.v !== 5) { setStatus(t("ver_mismatch"), "#f66"); noteDroppedSq(msg.sq); return; } // v5 = row-delta (maska zmienionych wierszy per chunk)
 		if (ST.wsx.mismatchLogged) { ST.wsx.mismatchLogged = false; log("World MATCH — lustro rusza"); }
 		ST.wsx.mismatchWarned = false;
 		setClientPaused(true);
@@ -1540,7 +1696,11 @@
 		// jej trzymac — dane sa juz nieaktualne. Kasujemy i prosimy o pelny swiat od nowa.
 		let __qb = 0; for (const it of ST._applyQ) __qb += it.raw.length;
 		if (__qb > 32 * 1024 * 1024) {
+			for (const it of ST._applyQ) noteDroppedSq(it.sq);
 			ST._applyQ.length = 0;
+			ST._lastAppliedSq = 0;
+			if (ST._appliedSqs) ST._appliedSqs.clear();
+			if (ST._droppedSqs) ST._droppedSqs.clear();
 			log("ZATOR: kolejka nakladania przekroczyla 32 MB — czyszcze i prosze o resync");
 			try { net.send({ t: "resync" }); } catch (e) {}
 			return;
@@ -1574,9 +1734,7 @@
 		const w = ST.wsx;
 		if (applied > 0) ST._lastWcT = performance.now();
 		if (applied > 0 && ST._stallShown) { ST._stallShown = false; setStatus(t("players", ST.peers.size + 1)); } // dane wrocily => zdejmij komunikat o zatorze // do wskaźnika zatoru (sync_stalled)
-		// Record the batch AFTER applying it, not on receipt, so the host's lag also catches a client that
-		// is CPU bound, not only a saturated link.
-		if (typeof msg.sq === "number") ST._lastAppliedSq = msg.sq;
+		// 0.9.163: watermark jest podnoszony w drainApplyQ (noteAppliedSq) dopiero po pelnym nalozeniu.
 		if (applied > 0 && !w.everApplied) {
 			w.everApplied = true; log("Pierwsze paczki świata zastosowane — lustro działa"); setStatus(t("players", ST.peers.size + 1));
 			techRepair(state, "client"); // zbrickowane flagi w save od hosta (0.9.71)
@@ -3932,6 +4090,19 @@
 			|| (o1 === 192 && o2 === 168) || (o1 === 172 && o2 >= 16 && o2 <= 31)
 			|| (o1 === 169 && o2 === 254) || (o1 === 100 && o2 >= 64 && o2 <= 127);
 	}
+	function anySteamPeer() {
+		if (!ST.peers.size) return ST.net.transport === "steam";
+		for (const p of ST.peers.values()) if (p.kind !== "ws") return true;
+		return false;
+	}
+	function sessionTrName() {
+		if (ST.net.transport === "ws") return ST._directMode ? "Internet" : "LAN";
+		if (ST.net.transport === "steam") {
+			if (ST.peers.size && !anySteamPeer()) return "Direct";
+			return "Steam";
+		}
+		return ST.net.transport || "";
+	}
 
 	function updatePingDisplay() {
 		if (!ST._hud) return;
@@ -3944,7 +4115,8 @@
 		// Relay Valve: gdy obieg pakietu liczy sie w SEKUNDACH, to nie jest "slabe lacze" tylko dlawiony relay —
 		// akcje gracza stoja w tej samej kolejce co transfer swiata, wiec nic sie nie dzieje w swiecie.
 		try {
-			if (ST.net.transport === "steam" && ST.net.role !== "idle") {
+			let onSteam = anySteamPeer();
+			if (onSteam && ST.net.role !== "idle") {
 				let worst = 0;
 				for (const p of ST.peers.values()) if (p.ping != null && p.ping > worst) worst = p.ping;
 				if (worst > 5000 && performance.now() - (ST._relayWarnT || 0) > 20000) {
@@ -4186,6 +4358,7 @@
 			// hosta między wysyłkami!) i wczytywał ZEPSUTY świat. Teraz klient przyjmuje tylko paczki
 			// bieżącego tid, a host nie zaczyna nowego transferu póki trwa poprzedni (guard wyżej).
 			ST._wtxSeq = (ST._wtxSeq || 0) + 1;
+			if (ST._wtxHold) { clearTimeout(ST._wtxHold); ST._wtxHold = null; }
 			ST._wtx = { tid: ST._wtxSeq, name: save.name || save.id, parts, total, queue: [], sent: 0, sizeKB: Math.round(bytes.length / 1024) };
 			for (let i = 0; i < total; i++) ST._wtx.queue.push(i);
 			net.send({ t: "world-begin", tid: ST._wtx.tid, name: ST._wtx.name, size: bytes.length, chunks: total, gen: ST._worldGen || null });
@@ -4209,7 +4382,18 @@
 				w.sent++; n++;
 			}
 			if (w.queue.length) { ST._wtxTimer = setTimeout(step, 25); } // ~160 paczek/s = ~7.5 MB/s
-			else { net.send({ t: "world-end", tid: w.tid }); ST._wtxTimer = null; }
+			else {
+				net.send({ t: "world-end", tid: w.tid });
+				ST._wtxTimer = null;
+				if (ST._wtxHold) clearTimeout(ST._wtxHold);
+				ST._wtxHold = setTimeout(() => {
+					ST._wtxHold = null;
+					if (ST._wtx && ST._wtx.tid === w.tid && (!ST._wtx.queue || !ST._wtx.queue.length)) {
+						log("save transfer tid " + w.tid + " — okno wznawiania zamkniete");
+						ST._wtx = null;
+					}
+				}, 20000);
+			}
 		};
 		ST._wtxTimer = setTimeout(step, 0);
 	}
@@ -4223,7 +4407,7 @@
 		const hud = document.getElementById("st-hud"); if (!hud) return;
 		const q = (id) => hud.querySelector(id);
 		const role = ST.net.role;
-		const trName = ST.net.transport === "steam" ? "Steam" : (ST._directMode ? "Internet" : "LAN");
+		const trName = sessionTrName();
 		const badge = q("#st-badge");
 		const roleColor = role === "host" ? "#5f5" : role === "client" ? "#6cf" : "#f66";
 		if (badge) {
@@ -4260,7 +4444,8 @@
 				mk("#5f5", ST._myNick || "Player", "(" + t("lb_you") + (role === "host" ? " · host)" : ")"));
 				for (const [, pr] of ST.peers) {
 					const ok = !pr.modVer || pr.modVer === VER;
-					mk(ok ? "#5f5" : "#f66", pr.nick || "?", ok ? "" : pr.modVer);
+					const via = pr.kind === "ws" ? t("peer_kind_ws") : (pr.kind === "steam" ? t("peer_kind_steam") : "");
+					mk(ok ? "#5f5" : "#f66", pr.nick || "?", (via ? via : "") + (ok ? "" : " " + (pr.modVer || "")));
 				}
 			}
 		}
@@ -4525,7 +4710,7 @@
 			} else {
 				// LOBBY: badge roli + status + lobby id + zaproś + lista graczy + świat + rozłącz
 				const badge = document.createElement("div");
-				const trName = ST.net.transport === "steam" ? "Steam" : (ST._directMode ? "Internet" : "LAN");
+				const trName = sessionTrName();
 				badge.style.cssText = "font-weight:800;font-size:15px;margin:2px 0 4px;color:" + (ST.net.role === "host" ? "#5f5" : "#6cf");
 				badge.textContent = ST.net.role === "host" ? t("badge_host", trName) : t("badge_client", trName);
 				p.appendChild(badge);
@@ -4655,7 +4840,10 @@
 					return r;
 				};
 				pl2.appendChild(mk(ST._myNick || "Player", "(" + t("lb_you") + ") " + VER, true));
-				for (const [, pr] of ST.peers) pl2.appendChild(mk(pr.nick || "?", pr.modVer || "?", !pr.modVer || pr.modVer === VER));
+				for (const [, pr] of ST.peers) {
+					const via = pr.kind === "ws" ? t("peer_kind_ws") : (pr.kind === "steam" ? t("peer_kind_steam") : "");
+					pl2.appendChild(mk(pr.nick || "?", (via ? via + " · " : "") + (pr.modVer || "?"), !pr.modVer || pr.modVer === VER));
+				}
 			}
 		}
 	}
@@ -5395,10 +5583,7 @@
 			// throttles itself. Cheap (~20 B) and sent unordered, so it never queues behind world packets.
 			// A slower ack (2 Hz say) would add ~5 batches of its own age to the measurement and the
 			// controller would throttle a perfectly healthy link.
-			if (ST._lastAppliedSq != null && now - (ST._lastAckT || 0) > 100) {
-				ST._lastAckT = now;
-				try { net.send({ t: "wcack", sq: ST._lastAppliedSq, qd: (ST._applyQ || []).length }); } catch (e) {} // qd = ile paczek czeka u mnie na nalozenie
-			}
+			if (now - (ST._lastAckT || 0) > 100) sendWorldAck();
 			sendMyProjectilesIfDue(state);
 			sendResourceDeltaIfDue(state); // wyślij hostowi przyrosty zasobów klienta (dotNine)
 			// flush batchy ognia/lodu co ~60 ms

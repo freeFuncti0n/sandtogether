@@ -16,7 +16,8 @@ Pick the game branch in Steam: **Sandustry → Properties → Betas**. All playe
 
 | Mod version | Game version / Steam branch |
 |-------------|-----------------------------|
-| **v0.9.162** (current, Workshop) | **0.5.5** (branch `0.5.5 with mod support`, same build as the default public version) |
+| **v0.9.163** (this branch) | **0.5.5** (branch `0.5.5 with mod support`, same build as the default public version) |
+| [v0.9.162-beta](https://github.com/IronBamBam1990/sandtogether/archive/refs/tags/v0.9.162-beta.zip) | **0.5.5** — upstream Workshop without hybrid Direct |
 | [v0.9.161-beta](https://github.com/IronBamBam1990/sandtogether/archive/refs/tags/v0.9.161-beta.zip) | **0.5.2** (beta branch `mods`) — unzip, run `install.bat` from `dist-package` |
 
 Old branch (`mods`, 0.5.2):
@@ -34,7 +35,7 @@ The game is an Electron app; the simulation is non-deterministic (83× `Math.ran
 - **Host** runs the only real simulation and streams the world to clients: dirty 40×40 chunks of `mapData` (RGBA) + `wallData` + `shadowMap` + `authorization` + `sim.cellIds` (collision) + element types, 12 B/cell, **row-delta encoded** (per-row FNV hashes → only changed 40-cell rows are sent, protocol v5), deflate-compressed, prioritized around player positions (fast lane) with a starvation-free FIFO for the rest; fully fogged chunks are skipped until revealed.
 - **Client** simulation is paused (manager opcode `SetPaused`); rendering stays alive and reads the mirrored buffers every frame. A re-pause heartbeat protects against the game's own unpause paths (ESC menu).
 - **Client actions** (dig, build, demolish, move, vacuum, grabber, flamethrower, cryoblaster, spray, guns…) are captured via small string-patches in `bundle.js` (see `src/patches.json`, multi-version anchor variants) plus game event hooks, forwarded to the host, replayed there authoritatively, and confirmed back through the world stream.
-- **Transports**: Steam P2P (lobbies, invites, `+connect_lobby`, lobby-ID clipboard join) and a dependency-free WebSocket (LAN), both with auto-reconnect. Networking lives in the Electron main process (`src/st-main.js`) because the renderer reloads between scenes.
+- **Transports**: Steam P2P (lobbies, invites, `+connect_lobby`) hybrid with Direct WebSocket when TCP 27777 is reachable (LAN then public IP, session token; Steam remains fallback), plus standalone WebSocket (LAN / Host Direct + UPnP). Networking lives in the Electron main process (`src/st-main.js`) because the renderer reloads between scenes.
 - **Shared progression**: research/upgrade pool, tech tree, story steps, critter collection and factory-process counters are host-authoritative and synced at 1 Hz; client purchases forward the real cost (resource diff) for the host to deduct.
 - **Auto-update**: at every game launch `st-main.js` compares the mod version in the Steam Workshop folder with the installed one; a newer Workshop copy is installed (files + bundle patches) and the game relaunches once. The author's newer local build is never downgraded.
 

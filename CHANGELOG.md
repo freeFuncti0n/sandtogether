@@ -1,3 +1,11 @@
+## 0.9.163-beta
+
+**Steam invite now tries a direct connection automatically** (ported onto 0.9.162). Host (Steam) still creates the Friends-only lobby and overlay invite — nothing new to share — but the host also opens TCP 27777 (UPnP when the router allows it) and, after the Steam hello, tells the joining friend the LAN and public address over P2P. The client tries LAN first (avoids hairpin NAT), then the public IP, with a session token so a random scanner cannot join the open port. If Direct comes up, the world stream moves to WebSocket (full bandwidth, binary frames); Steam stays for invites and as fallback when Direct drops or CGNAT blocks it. Old mods ignore the upgrade message and keep using Steam P2P.
+
+**World holes over the internet — contiguous ACK watermark.** The client used to acknowledge the *latest* world batch it had seen, so a lost packet in the middle counted as delivered. The ack is now a contiguous watermark: batch 52 without 51 keeps the ack at 50, the hole is NACKed immediately, and those chunks are resent from the *current* state. Steam P2P sends the same binary world frames as WebSocket, live batches cap at ~48 KB while anyone is still on Steam, and a slow VPN peer no longer drops everyone else's budget to 25 %. A `world-need` for an old transfer id is ignored instead of restarting the whole save.
+
+Also includes everything from 0.9.162 (installer FH-alias adaptation) back through 0.9.145 (TCP_NODELAY on Direct/LAN).
+
 ## 0.9.162-beta
 
 **The re-minified-build fix (0.9.160) now covers the public installer too.** The alias adaptation
@@ -303,7 +311,6 @@ good ping, good bandwidth, strong host, and a session that still felt like rubbe
 pick anything up. Both ends now set TCP_NODELAY. (Reported by friberg, whose 80 ms ping on a 600/300 line
 ruled the connection out; the same complaint had come from others who had already tried Steam, Hamachi and
 direct hosting and found all three equally bad - which fits, since the fault was below all of them.)
-
 ## 0.9.144-beta
 
 **The Steam relay now announces itself.** A session invited through Steam runs over Valve's relay, which

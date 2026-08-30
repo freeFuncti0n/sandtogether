@@ -36,16 +36,20 @@ każdym starcie gry (z Twojej subskrypcji Warsztatu; gra raz się zrestartuje pr
 aktualizacji). Instalatora nie odpalasz nigdy więcej, a obaj gracze zawsze mają
 tę samą wersję.
 
-## Jak grać (internet, przez Steam — bez konfiguracji sieci)
+## Jak grać (internet, przez Steam — bez podawania adresu)
 
 **Host:**
 1. Panel → **Host (Steam)** → **Zaproś** (wybierz znajomego).
 2. Wczytaj/rozpocznij grę — świat wyśle się dołączającemu automatycznie.
+   Direct włącza się sam, gdy TCP 27777 jest osiągalny (ta sama sieć albo UPnP);
+   inaczej sesja zostaje na Steam P2P. Adresu IP nie podajesz.
 
 **Dołączający:**
 1. Przyjmij zaproszenie Steam (działa przy otwartej i zamkniętej grze).
 2. Po "World imported!": **Load Game** → wczytaj otrzymany świat.
-3. Gracie w jednym wspólnym świecie (panel pokazuje "lustro hosta").
+3. Gracie w jednym wspólnym świecie (panel pokazuje "lustro hosta"). Panel
+   pokaże **Direct**, gdy upgrade się uda, albo zostaje na **Steam**, gdy
+   port jest nieosiągalny.
 
 **LAN:** Host LAN / Dołącz LAN (wpisz `ip` lub `ip:port`, domyślnie 27777).
 **Czat:** pole wiadomości w panelu, Enter wysyła.

@@ -36,8 +36,8 @@ From then on the mod updates itself at every launch, so both players always matc
 [h2]How to play[/h2]
 Main menu → [b]Multiplayer[/b] → pick how you want to connect:
 [list]
-[*] [b]Host (Internet — direct)[/b] — recommended. The mod opens the port on your router by itself (UPnP) and shows your address [b]masked[/b], with show/hide and a copy button that never puts it on screen — safe to stream. Your friend pastes that address into [b]Join by address[/b] (the same button also covers LAN and VPN). This is the fastest route: it does NOT go through Steam relay servers, which throttle bandwidth and add latency.
-[*] [b]Host (Steam)[/b] + [b]Invite[/b] — zero setup, invite straight from your Steam friend list.
+[*] [b]Host (Internet — direct)[/b] — The mod opens the port on your router by itself (UPnP) and shows your address [b]masked[/b], with show/hide and a copy button that never puts it on screen — safe to stream. Your friend pastes that address into [b]Join by address[/b] (the same button also covers LAN and VPN). This is the fastest route: it does NOT go through Steam relay servers, which throttle bandwidth and add latency.
+[*] [b]Host (Steam)[/b] + [b]Invite[/b] — zero setup; Direct is used automatically when the port opens, else Steam P2P.
 [*] [b]Host LAN[/b] / [b]Join by address[/b] — same network, or a VPN mesh like Tailscale. One warning: from inside your own network you cannot reach your own public address — most routers refuse it — so when you are both on the same network, use the local 192.168.x.x address.
 [*] [b]Join by Lobby ID[/b] — paste an ID from the clipboard.
 [/list]
@@ -106,7 +106,7 @@ Full source on GitHub: [url=https://github.com/IronBamBam1990/sandtogether]githu
   const details = {
     title: TITLE,
     description: DESCRIPTION,
-    changeNote: 'v0.9.162-beta - the re-minified-build fix from 0.9.160 now also lives in the PUBLIC installer (install.bat / install.ps1), not just in the dev patcher. Background: Steam sometimes ships the same game version re-minified, which renames one internal module alias (e.g. "ie.FH" -> "se.FH") and made every install anchor miss, so the installer wrongly reported "This game version is NOT supported" (thanks cayden.sieteski for the report). The installer now detects the alias from the game bundle itself and, when a literal anchor misses, retries it with the alias rewritten - verified on a simulated re-minified bundle: all 29 hooks apply cleanly. The error message for a genuinely unsupported build now also names the detected alias, which makes future reports much easier to diagnose. If you ever hit "NOT supported", re-run install.bat from this version first. Mod runtime itself is unchanged from 0.9.161 (frame-hook armor + error recorder, join-sync fixes, Corraller round).',
+    changeNote: 'v0.9.163-beta - Steam invite now tries Direct automatically (LAN then public IP, session token; Steam stays as fallback). Contiguous world-ack watermark so lost packets are resent instead of leaving holes. Steam binary frames + 48 KB cap while anyone is still on P2P. Built on 0.9.162 (installer FH-alias for re-minified Steam builds).',
     previewPath: PREVIEW,
     contentPath: CONTENT,
     visibility: vis,
